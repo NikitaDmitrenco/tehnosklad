@@ -1,0 +1,5 @@
+-- Archived Stage 1 schema location.
+--
+-- This file is intentionally not executable and is not a production source.
+-- The reviewed, ordered schema is maintained only in supabase/migrations/.
+-- See docs/stage-3.md for the Stage 1 draft analysis and migration decisions.

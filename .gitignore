@@ -1,0 +1,35 @@
+# dependencies
+/node_modules
+
+# Next.js output
+/.next
+/out
+/playwright-report
+/test-results
+/playwright/.auth
+*.auth.json
+
+# production output
+/build
+
+# local files
+.DS_Store
+*.pem
+npm-debug.log*
+
+# environment files (the example is intentionally tracked)
+.env*
+!.env.example
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Vercel
+.vercel
+
+# Ephemeral agent worktrees created inside the repository
+/.claude/worktrees/
+
+# Imported nested archive copy (not part of this repository)
+/sklad/

@@ -1,0 +1,218 @@
+{
+  "timestamp": "2026-08-19T12:03:06.923Z",
+  "targetUrl": "http://localhost:3000",
+  "sections": {
+    "dashboard": {
+      "url": "http://localhost:3000/admin",
+      "statCards": [
+        {
+          "label": "Всего товаров",
+          "value": "105",
+          "href": "/admin/products"
+        },
+        {
+          "label": "Опубликовано",
+          "value": "105",
+          "href": "/admin/products?publication=published"
+        },
+        {
+          "label": "Нет в наличии",
+          "value": "0",
+          "href": "/admin/products"
+        },
+        {
+          "label": "Категории",
+          "value": "15",
+          "href": "/admin/categories"
+        },
+        {
+          "label": "Новые заявки",
+          "value": "0",
+          "href": "/admin/leads?status=new"
+        },
+        {
+          "label": "Ошибки Telegram",
+          "value": "0",
+          "href": "/admin/leads"
+        }
+      ],
+      "recentLeadsCount": 0,
+      "recentLeadsPreview": []
+    },
+    "categoriesList": {
+      "count": 15,
+      "sample": [
+        {
+          "title": "Холодильники",
+          "meta": "Frigidere · fridge",
+          "badges": ["Опубликована", "7 товаров"],
+          "href": "/admin/categories/10000000-0000-4000-8000-000000000001"
+        },
+        {
+          "title": "Стиральные машины",
+          "meta": "Mașini de spălat rufe · generic",
+          "badges": ["Опубликована", "7 товаров"],
+          "href": "/admin/categories/10000000-0000-4000-8000-000000000002"
+        },
+        {
+          "title": "Плиты и варочные панели",
+          "meta": "Plite și aragazuri · stove",
+          "badges": ["Опубликована", "7 товаров"],
+          "href": "/admin/categories/10000000-0000-4000-8000-000000000003"
+        }
+      ]
+    },
+    "categoryDetail": {
+      "ruName": "Холодильники",
+      "ruSlug": "refrigerators",
+      "roName": "Frigidere",
+      "roSlug": "refrigerators",
+      "presentationKey": "fridge",
+      "isPublished": true,
+      "hasImageSection": true,
+      "hasArchiveSection": true
+    },
+    "categoryNew": {
+      "fieldsCount": 18
+    },
+    "attributeGroupsList": {
+      "count": 0,
+      "sample": []
+    },
+    "attributesList": {
+      "count": 0,
+      "sample": []
+    },
+    "productsList": {
+      "count": 105,
+      "sample": [
+        {
+          "title": "Samsung RB34T602FSA",
+          "meta": "Samsung RB34T602FSA · TS-REF-0001 · 9499 MDL",
+          "badges": ["Опубликован", "in_stock"],
+          "href": "/admin/products/20000000-0000-4000-8000-000000000001"
+        },
+        {
+          "title": "LG GA-B459CLWL",
+          "meta": "LG GA-B459CLWL · TS-REF-0002 · 10999 MDL",
+          "badges": ["Опубликован", "in_stock"],
+          "href": "/admin/products/20000000-0000-4000-8000-000000000002"
+        },
+        {
+          "title": "Bosch KGN39VL316",
+          "meta": "Bosch KGN39VL316 · TS-REF-0003 · 12499 MDL",
+          "badges": ["Опубликован", "in_stock"],
+          "href": "/admin/products/20000000-0000-4000-8000-000000000003"
+        }
+      ]
+    },
+    "productDetail": {
+      "brand": "Samsung",
+      "model": "RB34T602FSA",
+      "sku": "TS-REF-0001",
+      "price": "9499",
+      "oldPrice": "10499",
+      "availability": "in_stock",
+      "isPublished": true,
+      "checklist": [
+        {
+          "icon": "✓",
+          "text": "Категория опубликована"
+        },
+        {
+          "icon": "✓",
+          "text": "Переводы RU и RO заполнены"
+        },
+        {
+          "icon": "✓",
+          "text": "Обязательные характеристики заполнены"
+        },
+        {
+          "icon": "✓",
+          "text": "Alt-тексты изображений заполнены"
+        }
+      ],
+      "previewLinks": [
+        {
+          "text": "Preview RU",
+          "href": "/admin/products/20000000-0000-4000-8000-000000000001/preview/ru"
+        },
+        {
+          "text": "Preview RO",
+          "href": "/admin/products/20000000-0000-4000-8000-000000000001/preview/ro"
+        },
+        {
+          "text": "Витрина RU",
+          "href": "/ru/product/samsung-rb34t602fsa"
+        },
+        {
+          "text": "Витрина RO",
+          "href": "/ro/product/samsung-rb34t602fsa"
+        }
+      ],
+      "imagesCount": 0,
+      "hasImageUpload": true,
+      "hasArchiveButton": true
+    },
+    "leadsList": {
+      "count": 0,
+      "exportHref": "/admin/leads/export?",
+      "sample": []
+    },
+    "settings": [
+      {
+        "key": "phone_display",
+        "label": "Телефон для отображенияphone_display",
+        "ruValue": "+373 69 166 172",
+        "roValue": "+373 69 166 172"
+      },
+      {
+        "key": "phone_href",
+        "label": "Ссылка tel:phone_href",
+        "ruValue": "tel:+37369166172",
+        "roValue": "tel:+37369166172"
+      },
+      {
+        "key": "address",
+        "label": "Адресaddress",
+        "ruValue": "ул. Победы, 97, Комрат",
+        "roValue": "str. Victoriei, 97, Comrat"
+      },
+      {
+        "key": "open_days",
+        "label": "Рабочие дниopen_days",
+        "ruValue": "Вторник–воскресенье",
+        "roValue": "Marți–duminică"
+      },
+      {
+        "key": "open_time",
+        "label": "Время работыopen_time",
+        "ruValue": "08:00–16:00",
+        "roValue": "08:00–16:00"
+      },
+      {
+        "key": "closed_day",
+        "label": "Выходнойclosed_day",
+        "ruValue": "Понедельник — выходной",
+        "roValue": "Luni — zi liberă"
+      },
+      {
+        "key": "contact_text",
+        "label": "Контактный текстcontact_text",
+        "ruValue": "Позвоните нам в часы работы магазина.",
+        "roValue": "Sunați-ne în programul magazinului."
+      }
+    ],
+    "mediaOrphans": {
+      "emptyStateText": [
+        "Orphan-файлов нет",
+        "Storage и metadata согласованы."
+      ],
+      "orphanCardsCount": 0
+    },
+    "logout": {
+      "success": true,
+      "finalUrl": "http://localhost:3000/admin/login"
+    }
+  }
+}
