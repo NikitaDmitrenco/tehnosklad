@@ -45,13 +45,38 @@ export const adminRead = {
 
   async countSlugRoutesForCategory(categoryId: string) {
     const supabase = getLocalAdminSupabase();
+    // category_slug_routes has no id column: PK is (locale, slug).
     const { count, error } = await supabase
       .from("category_slug_routes")
-      .select("id", { count: "exact", head: true })
+      .select("slug", { count: "exact", head: true })
       .eq("category_id", categoryId);
     if (error)
       throw new Error(
         `[adminRead] slug routes ${categoryId}: ${error.message}`,
+      );
+    return count ?? 0;
+  },
+
+  async countSlugRoutesBySlug(slug: string) {
+    const supabase = getLocalAdminSupabase();
+    const { count, error } = await supabase
+      .from("category_slug_routes")
+      .select("slug", { count: "exact", head: true })
+      .eq("slug", slug);
+    if (error)
+      throw new Error(`[adminRead] slug routes slug=${slug}: ${error.message}`);
+    return count ?? 0;
+  },
+
+  async countTranslationsBySlug(slug: string) {
+    const supabase = getLocalAdminSupabase();
+    const { count, error } = await supabase
+      .from("category_translations")
+      .select("category_id", { count: "exact", head: true })
+      .eq("slug", slug);
+    if (error)
+      throw new Error(
+        `[adminRead] translations slug=${slug}: ${error.message}`,
       );
     return count ?? 0;
   },

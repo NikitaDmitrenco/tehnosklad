@@ -22,10 +22,17 @@ export function errorNotice(page: Page, message?: string): Locator {
   return message === undefined ? alert : alert.filter({ hasText: message });
 }
 
+// Server actions run ~1-3s idle but can exceed Playwright's default 5s
+// assertion timeout when 3 workers hit the DB in parallel; still web-first
+// polling of the real redirect signal, just with headroom.
+const ACTION_TIMEOUT_MS = 20_000;
+
 /** Wait for a successful mutation: `?saved=1` redirect + success flash. */
 export async function expectSaved(page: Page): Promise<void> {
-  await expect(page).toHaveURL(/[?&]saved=1/);
-  await expect(successNotice(page)).toBeVisible();
+  await expect(page).toHaveURL(/[?&]saved=1/, { timeout: ACTION_TIMEOUT_MS });
+  await expect(successNotice(page)).toBeVisible({
+    timeout: ACTION_TIMEOUT_MS,
+  });
 }
 
 /**
@@ -43,13 +50,17 @@ export async function expectErrorNotice(
   code: string,
   message?: string,
 ): Promise<void> {
-  const encoded = encodeURIComponent(code).replace(
-    /[.*+?^${}()|[\]\\]/g,
-    "\\$&",
-  );
-  await expect(page).toHaveURL(new RegExp(`[?&]error=${encoded}`));
+  // Next serializes query strings form-style: spaces become "+".
+  const encoded = encodeURIComponent(code)
+    .replace(/%20/g, "+")
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  await expect(page).toHaveURL(new RegExp(`[?&]error=${encoded}`), {
+    timeout: ACTION_TIMEOUT_MS,
+  });
   if (message !== undefined) {
-    await expect(page.getByText(message, { exact: true })).toBeVisible();
+    await expect(page.getByText(message, { exact: true })).toBeVisible({
+      timeout: ACTION_TIMEOUT_MS,
+    });
   }
 }
 
@@ -57,13 +68,13 @@ export async function expectErrorNotice(
  * Assert an HTML5 constraint blocked submission: page stayed on `path`
  * (no navigation) and the given field is :invalid.
  */
-export function expectHtml5Blocked(
+export async function expectHtml5Blocked(
   page: Page,
   fieldSelector: string,
   currentPathFragment: string,
-): void {
+): Promise<void> {
   expect(page.url()).toContain(currentPathFragment);
   expect(page.url()).not.toContain("saved=1");
   expect(page.url()).not.toContain("error=");
-  expect(page.locator(`${fieldSelector}:invalid`)).toHaveCount(1);
+  await expect(page.locator(`${fieldSelector}:invalid`)).toHaveCount(1);
 }
