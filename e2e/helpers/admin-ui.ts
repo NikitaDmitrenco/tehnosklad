@@ -29,9 +29,14 @@ export async function expectSaved(page: Page): Promise<void> {
 }
 
 /**
- * Wait for a failed mutation: `?error=<code>` redirect + visible alert.
+ * Wait for a failed mutation: `?error=<code>` redirect + visible error text.
  * `code` may be a fragment (e.g. "duplicate"); it is URL-encoded before
  * matching, so pass spaces as-is ("duplicate key").
+ *
+ * The message is matched with getByText rather than getByRole("alert") because
+ * (a) the login page renders its error as a plain <p> with no ARIA role, and
+ * (b) Next.js always injects an empty `role=alert` route announcer, so a bare
+ * role lookup would match every page.
  */
 export async function expectErrorNotice(
   page: Page,
@@ -44,9 +49,7 @@ export async function expectErrorNotice(
   );
   await expect(page).toHaveURL(new RegExp(`[?&]error=${encoded}`));
   if (message !== undefined) {
-    await expect(errorNotice(page, message)).toBeVisible();
-  } else {
-    await expect(page.getByRole("alert").first()).toBeVisible();
+    await expect(page.getByText(message, { exact: true })).toBeVisible();
   }
 }
 
