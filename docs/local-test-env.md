@@ -212,7 +212,11 @@ E2E-тесты могут оставлять orphaned slug routes (FK RESTRICT �
 | AI fallback | Работает | Работает | Работает |
 | Supabase ключи | Зависит от CLI/hosting | `sb_publishable_*` / `sb_secret_*` (Supabase CLI 2.111+) | То же |
 
-**Замечание по тестам:** 4 падения публичных Playwright-тестов (product link navigation) наблюдаются ТОЛЬКО в dev-режиме (Turbopack). В production-like режиме (webpack) все 4 теста проходят. Это артефакты Turbopack dev-сервера, не баги приложения.
+**Замечание по тестам:**
+- 4 падения публичных Playwright-тестов (product link navigation) наблюдаются **только** в dev-режиме (Turbopack). В production-like режиме (webpack) все 4 проходят. Артефакты dev-сервера, не баги.
+- Тест `locale-switching.spec.ts:19` падает в production-like режиме: `localeCookieOptions()` ставит `secure: true` при `NODE_ENV=production`, а сервер работает по HTTP. Playwright Chromium не сохраняет Secure-куку поверх HTTP localhost. В dev (`secure: false`) тест проходит. Код приложения корректен для Vercel (HTTPS). Тест написан под dev-окружение.
+
+**Рекомендуемый сервер для написания admin-тестов:** production-like (`npm run build && npm start`). Это webpack + NODE_ENV=production — ближе всего к Vercel. Playwright переиспользует всё, что слушает порт 3000 (`reuseExistingServer: true`) — перед запуском тестов убедитесь, что запущен именно нужный сервер.
 
 ## Структура файлов
 
