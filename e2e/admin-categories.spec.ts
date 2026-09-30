@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
+import path from "node:path";
 import { cleanupRunArtifacts } from "./helpers/cleanup";
 import { adminRead } from "./helpers/admin-read";
 import {
@@ -8,6 +9,15 @@ import {
   expectSaved,
 } from "./helpers/admin-ui";
 import { formatRunSlug } from "./fixtures/run-id";
+
+const VALID_IMAGE = path.resolve(
+  process.cwd(),
+  "e2e/fixtures/images/valid/category-cover-1600x900.jpg",
+);
+const INVALID_IMAGE = path.resolve(
+  process.cwd(),
+  "e2e/fixtures/images/invalid/text-renamed-to.png",
+);
 
 const SEED_CATEGORY_ID = "10000000-0000-4000-8000-000000000001";
 
@@ -303,5 +313,229 @@ test.describe("ADM-CAT: categories", () => {
     const seed = await adminRead.getCategoryById(SEED_CATEGORY_ID);
     expect(seed?.archived_at).toBeNull();
     expect(seed?.is_published).toBe(true);
+  });
+
+  test("ADM-CAT-02: Add link opens new form", async ({ page }) => {
+    await page.goto("/admin/categories");
+    await page.getByRole("link", { name: "Добавить категорию" }).click();
+    await expect(page).toHaveURL(/\/admin\/categories\/new$/);
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Новая категория" }),
+    ).toBeVisible();
+  });
+
+  test("ADM-CAT-13: invalid slug pattern blocked by HTML5", async ({
+    page,
+    runId,
+  }) => {
+    const nameRu = `Плохой slug ${runId}`;
+    await page.goto("/admin/categories/new");
+    await page.locator('input[name="ru_name"]').fill(nameRu);
+    await page.locator('input[name="ru_slug"]').fill("Bad Slug");
+    await page
+      .locator('textarea[name="ru_short_description"]')
+      .fill(`Краткое описание ${runId}`);
+    await page
+      .locator('textarea[name="ru_description"]')
+      .fill(`Полное описание ${runId}`);
+    await page.locator('input[name="ro_name"]').fill(`Slug rau ${runId}`);
+    await page.locator('input[name="ro_slug"]').fill("bad-slug-ro");
+    await page
+      .locator('textarea[name="ro_short_description"]')
+      .fill(`Descriere ${runId}`);
+    await page
+      .locator('textarea[name="ro_description"]')
+      .fill(`Descriere completa ${runId}`);
+
+    await page.getByRole("button", { name: "Сохранить категорию" }).click();
+
+    await expectHtml5Blocked(
+      page,
+      'input[name="ru_slug"]',
+      "/admin/categories/new",
+    );
+    expect(await adminRead.countCategoriesByRunSlug(runId)).toBe(0);
+  });
+
+  test("ADM-CAT-14: publish with full RU/RO", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId, { isPublished: true });
+    const categoryId = await factories.createCategoryViaUI(page, data);
+    await expectSaved(page);
+
+    const dbRow = await adminRead.getCategoryById(categoryId);
+    expect(dbRow?.is_published).toBe(true);
+
+    await page.goto("/admin/categories");
+    await expect(
+      page.locator("a.admin-list-card").filter({ hasText: data.nameRu }),
+    ).toContainText("Опубликована");
+  });
+
+  // Known behavior (BUG-04, no test.fail per report): unmapped DB message
+  // "Published child category requires a published parent" surfaces as the
+  // generic operation_failed error.
+  test("ADM-CAT-15: child publish under draft parent rejected", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const parent = factories.buildCategoryData(runId, {
+      nameRu: `Родитель ${runId}`,
+      nameRo: `Parinte ${runId}`,
+    });
+    const parentId = await factories.createCategoryViaUI(page, parent);
+
+    const child = formValues(runId, {
+      nameRu: `Дитя ${runId}`,
+      slugRu: formatRunSlug("cat-child", runId, "ru"),
+      nameRo: `Copil ${runId}`,
+      slugRo: formatRunSlug("cat-child", runId, "ro"),
+    });
+    await page.goto("/admin/categories/new");
+    await page.locator('select[name="parent_id"]').selectOption(parentId);
+    await page.locator('input[name="is_published"]').check();
+    await page.locator('input[name="ru_name"]').fill(child.nameRu);
+    await page.locator('input[name="ru_slug"]').fill(child.slugRu);
+    await page
+      .locator('textarea[name="ru_short_description"]')
+      .fill(child.shortRu);
+    await page
+      .locator('textarea[name="ru_description"]')
+      .fill("Полное описание дитяти.");
+    await page.locator('input[name="ro_name"]').fill(child.nameRo);
+    await page.locator('input[name="ro_slug"]').fill(child.slugRo);
+    await page
+      .locator('textarea[name="ro_short_description"]')
+      .fill(child.shortRo);
+    await page
+      .locator('textarea[name="ro_description"]')
+      .fill("Descriere completa copil.");
+    await page.getByRole("button", { name: "Сохранить категорию" }).click();
+
+    await expectErrorNotice(page, "operation_failed", GENERIC_ERROR);
+    expect(await adminRead.getCategoryTranslation(child.slugRu)).toBeNull();
+    expect(await adminRead.countSlugRoutesBySlug(child.slugRu)).toBe(0);
+  });
+
+  test("ADM-CAT-03: Archived badge appears after archive", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    await factories.createCategoryViaUI(page, data);
+
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByRole("button", { name: "Архивировать" }).click();
+    // ?saved=1 is already in the URL from the create step, so the button
+    // swap to «Восстановить» is the trustworthy completion signal.
+    await expect(
+      page.getByRole("button", { name: "Восстановить" }),
+    ).toBeVisible();
+
+    await page.goto("/admin/categories");
+    await expect(
+      page.locator("a.admin-list-card").filter({ hasText: data.nameRu }),
+    ).toContainText("Архив");
+  });
+
+  // known bug BUG-01: UI SEO maxLength 70/160 vs doc/server max 180/320
+  test("ADM-CAT-16: SEO fields accept documented max 180/320 (BUG-01)", async ({
+    page,
+  }) => {
+    test.fail(
+      true,
+      "BUG-01: SEO inputs truncate to 70/160 via HTML maxLength (admin guide §7.2 allows 180/320)",
+    );
+    await page.goto("/admin/categories/new");
+    await page.locator('input[name="ru_seo_title"]').fill("т".repeat(180));
+    await page
+      .locator('textarea[name="ru_seo_description"]')
+      .fill("д".repeat(320));
+    // Single intended assertion last: full documented length must survive.
+    await expect(page.locator('input[name="ru_seo_title"]')).toHaveValue(
+      "т".repeat(180),
+    );
+  });
+
+  test("ADM-CAT-22: old public category URL redirects after slug change", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId, { isPublished: true });
+    const categoryId = await factories.createCategoryViaUI(page, data);
+
+    await page.goto(`/admin/categories/${categoryId}`);
+    const newSlug = formatRunSlug("cat3", runId, "ru");
+    await page.locator('input[name="ru_slug"]').fill(newSlug);
+    await page.getByRole("button", { name: "Сохранить категорию" }).click();
+    await expectSaved(page);
+
+    // Old public URL must permanently redirect to the current slug
+    // (category_slug_routes, page.tsx:74 permanentRedirect -> HTTP 308).
+    const resp = await page.request.get(`/ru/category/${data.slugRu}`, {
+      maxRedirects: 0,
+    });
+    expect(resp.status()).toBe(308);
+    expect(resp.headers()["location"] ?? "").toContain(newSlug);
+  });
+
+  test("ADM-CAT-20: Upload valid category image", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+
+    await page.goto(`/admin/categories/${categoryId}`);
+    await page.locator('input[name="image"]').setInputFiles(VALID_IMAGE);
+    await page.getByRole("button", { name: "Загрузить изображение" }).click();
+    await expectSaved(page);
+
+    // Visible image served from the category-images bucket.
+    await expect(
+      page.locator('img[src*="category-images"]').first(),
+    ).toBeVisible();
+    const dbRow = await adminRead.getCategoryById(categoryId);
+    expect(dbRow?.image_storage_path).toBeTruthy();
+
+    const objects = await adminRead.listStorageObjects(
+      "category-images",
+      "categories",
+    );
+    expect(
+      objects.some((o: { name: string }) => o.name.startsWith(categoryId)),
+    ).toBe(true);
+  });
+
+  // known bug BUG-06: AdminValidationError("image") → validation via actionCode
+  test("ADM-CAT-21: Invalid image type → intended upload_invalid (BUG-06)", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    test.fail(
+      true,
+      "BUG-06: invalid image shows generic «Проверьте обязательные поля…» (validation), not the upload_invalid catalog message",
+    );
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+
+    await page.goto(`/admin/categories/${categoryId}`);
+    await page.locator('input[name="image"]').setInputFiles(INVALID_IMAGE);
+    await page.getByRole("button", { name: "Загрузить изображение" }).click();
+    // Single intended assertion last (ADMIN_GUIDE §7.5, errors.ts:82).
+    await expect(
+      page.getByText(
+        "Файл должен быть JPEG, PNG, WebP или AVIF размером до 5 МБ.",
+        { exact: true },
+      ),
+    ).toBeVisible({ timeout: 20_000 });
   });
 });
