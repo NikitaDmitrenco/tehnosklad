@@ -32,4 +32,16 @@
 
 ## Как запускать
 
-(заполняется в Phase 4)
+**Перед любым запуском обязателен `docs/e2e-run-rules.md`** (headed-режим,
+только локальная тестовая БД, лог падений в `docs/e2e-failed-tests.md`,
+запуск только по команде владельца). Кратко:
+
+```powershell
+$env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "User") + ";" + $env:PATH
+fnm env --shell powershell 2>&1 | Invoke-Expression; fnm use
+# сервер: npm run build → detached `npm start` на :3000 (один!), Supabase: npm run db:start
+npx playwright test e2e/admin-<area>.spec.ts --project=admin --headed --reporter=list
+npx playwright test --project=admin --headed --reporter=list   # весь сьют
+```
+
+Подробная финализация (reset/isolation, матрица, хелперы, BUG-лист) — Phase 4.
