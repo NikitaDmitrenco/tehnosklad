@@ -122,17 +122,17 @@ export const adminRead = {
     return data;
   },
 
-  async getLeadByNote(marker: string) {
+  async getLeadByComment(marker: string) {
     const supabase = getLocalAdminSupabase();
     const { data, error } = await supabase
       .from("leads")
       .select("*, deliveries:lead_telegram_deliveries(*)")
-      .ilike("note", `%${marker}%`)
+      .ilike("comment", `%${marker}%`)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
     if (error)
-      throw new Error(`[adminRead] lead note ${marker}: ${error.message}`);
+      throw new Error(`[adminRead] lead comment ${marker}: ${error.message}`);
     return data;
   },
 
@@ -158,6 +158,73 @@ export const adminRead = {
       .limit(5);
     if (error)
       throw new Error(`[adminRead] knowledge title ${title}: ${error.message}`);
+    return data ?? [];
+  },
+
+  async countKnowledgeContaining(marker: string) {
+    const supabase = getLocalAdminSupabase();
+    const { count, error } = await supabase
+      .from("assistant_knowledge")
+      .select("id", { count: "exact", head: true })
+      .ilike("content", `%${marker}%`);
+    if (error)
+      throw new Error(
+        `[adminRead] knowledge count ${marker}: ${error.message}`,
+      );
+    return count ?? 0;
+  },
+
+  async getAttributeGroupByCode(code: string) {
+    const supabase = getLocalAdminSupabase();
+    const { data, error } = await supabase
+      .from("attribute_groups")
+      .select(
+        "id, code, is_active, translations:attribute_group_translations(*)",
+      )
+      .eq("code", code)
+      .maybeSingle();
+    if (error)
+      throw new Error(`[adminRead] group code ${code}: ${error.message}`);
+    return data;
+  },
+
+  async getAttributeByCode(code: string) {
+    const supabase = getLocalAdminSupabase();
+    const { data, error } = await supabase
+      .from("attributes")
+      .select(
+        "id, code, data_type, group_id, is_active, is_filterable, translations:attribute_translations(*), options:attribute_options(*)",
+      )
+      .eq("code", code)
+      .maybeSingle();
+    if (error)
+      throw new Error(`[adminRead] attribute code ${code}: ${error.message}`);
+    return data;
+  },
+
+  async getProductAttributeValues(productId: string) {
+    const supabase = getLocalAdminSupabase();
+    const { data, error } = await supabase
+      .from("product_attribute_values")
+      .select("attribute_id, text_value_key, number_value, boolean_value")
+      .eq("product_id", productId);
+    if (error)
+      throw new Error(
+        `[adminRead] product attribute values ${productId}: ${error.message}`,
+      );
+    return data ?? [];
+  },
+
+  async getProductImagePaths(productId: string) {
+    const supabase = getLocalAdminSupabase();
+    const { data, error } = await supabase
+      .from("product_images")
+      .select("id, storage_path, is_primary, deletion_pending_at")
+      .eq("product_id", productId);
+    if (error)
+      throw new Error(
+        `[adminRead] product images ${productId}: ${error.message}`,
+      );
     return data ?? [];
   },
 

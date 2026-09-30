@@ -41,7 +41,11 @@ export async function cleanupRunArtifacts(runId: string): Promise<void> {
     // Knowledge articles titled with the run id.
     await supabase.from("assistant_knowledge").delete().ilike("title", pattern);
 
-    // Rows (categories, products, leads, attributes, groups + slug routes).
+    // Leads: adminDb targets contact_value/note columns that do not exist on
+    // `leads` (silent no-op); the run id actually lives in `comment`.
+    await supabase.from("leads").delete().ilike("comment", pattern);
+
+    // Rows (categories, products, attributes, groups + slug routes).
     await adminDb.cleanUpByRunId(runId);
 
     // Storage objects keyed by deleted uuids.
