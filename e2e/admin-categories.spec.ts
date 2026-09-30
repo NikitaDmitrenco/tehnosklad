@@ -505,13 +505,17 @@ test.describe("ADM-CAT: categories", () => {
     const dbRow = await adminRead.getCategoryById(categoryId);
     expect(dbRow?.image_storage_path).toBeTruthy();
 
+    // Object exists at the exact stored key (path is categories/{random}.ext).
+    const storagePath = dbRow?.image_storage_path as string;
+    expect(storagePath.startsWith("categories/")).toBe(true);
+    const fileName = storagePath.slice("categories/".length);
     const objects = await adminRead.listStorageObjects(
       "category-images",
       "categories",
     );
-    expect(
-      objects.some((o: { name: string }) => o.name.startsWith(categoryId)),
-    ).toBe(true);
+    expect(objects.some((o: { name: string }) => o.name === fileName)).toBe(
+      true,
+    );
   });
 
   // known bug BUG-06: AdminValidationError("image") → validation via actionCode

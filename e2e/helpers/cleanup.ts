@@ -22,6 +22,20 @@ export async function cleanupRunArtifacts(runId: string): Promise<void> {
     const categoryIds = [
       ...new Set((catTranslations ?? []).map((r) => r.category_id)),
     ];
+    // Category image keys are `categories/{random}.ext` (NOT keyed by the
+    // category id), so the exact object paths must be read before deletion.
+    const categoryObjectPaths: string[] = [];
+    if (categoryIds.length > 0) {
+      const { data: catRows } = await supabase
+        .from("categories")
+        .select("id, image_storage_path")
+        .in("id", categoryIds);
+      for (const row of catRows ?? []) {
+        if (row.image_storage_path) {
+          categoryObjectPaths.push(row.image_storage_path as string);
+        }
+      }
+    }
 
     const { data: prodTranslations } = await supabase
       .from("product_translations")
@@ -49,14 +63,8 @@ export async function cleanupRunArtifacts(runId: string): Promise<void> {
     await adminDb.cleanUpByRunId(runId);
 
     // Storage objects keyed by deleted uuids.
-    const categoryBucket = supabase.storage.from("category-images");
-    for (const categoryId of categoryIds) {
-      const { data: files } = await categoryBucket.list("categories", {
-        search: categoryId,
-      });
-      if (files && files.length > 0) {
-        await categoryBucket.remove(files.map((f) => `categories/${f.name}`));
-      }
+    if (categoryObjectPaths.length > 0) {
+      await supabase.storage.from("category-images").remove(categoryObjectPaths);
     }
 
     const productBucket = supabase.storage.from("product-images");
