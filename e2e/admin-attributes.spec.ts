@@ -116,20 +116,26 @@ test.describe("ADM-ATTR: attributes", () => {
       (await adminRead.getAttributeByCode(data.code))?.options.length,
     ).toBe(1);
 
-    // Delete: URL already carries ?saved=1 — assert the option disappears.
+    // Delete: URL already carries ?saved=1 from the add step, so wait for
+    // the genuinely async DB side effect before re-checking the UI.
     let dialogMessage: string | undefined;
     page.once("dialog", (dialog) => {
       dialogMessage = dialog.message();
       void dialog.accept();
     });
     await page.getByRole("button", { name: "Удалить вариант" }).click();
+    await expect
+      .poll(
+        async () =>
+          (await adminRead.getAttributeByCode(data.code))?.options.length ??
+          -1,
+        { timeout: 20_000 },
+      )
+      .toBe(0);
     await expect(
       page.getByRole("button", { name: "Удалить вариант" }),
     ).toHaveCount(0);
     expect(dialogMessage).toBe(OPTION_CONFIRM);
-    expect(
-      (await adminRead.getAttributeByCode(data.code))?.options.length,
-    ).toBe(0);
   });
 
   test("ADM-ATTR-04: Bind category required/filter", async ({
