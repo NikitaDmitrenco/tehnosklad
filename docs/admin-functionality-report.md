@@ -21,7 +21,7 @@
 
 Существующее e2e admin: SMOKE-01 (dashboard/nav), SMOKE-02 (create category + DB), admin-navigation-styles (hover CSS). Остальные admin-маршруты не покрыты.
 
-Ключевые наблюдённые баги: (1) карточка заявки не показывает существующий Telegram outbox (`Delivery отсутствует` при rows в DB) — **live-подтверждено на dev**; (2) sanitizer не знает `Published child category requires a published parent` → generic `Операция не выполнена…`; (3) UI SEO maxLength **70/160** vs server/doc 180/320 — **live-подтверждено**; (4) e2e cleanup не удаляет slug_routes → orphan категории/UUID в select; (5) invalid image → generic `validation` not `upload_invalid` — **live-подтверждено** (.txt и .png с неверным content).
+Ключевые наблюдённые баги: (1) карточка заявки не показывает существующий Telegram outbox (`Delivery отсутствует` при rows в DB) — **live-подтверждено на dev**; (2) sanitizer не знает `Published child category requires a published parent` → generic `Операция не выполнена…`; (3) UI SEO maxLength **70/160** vs server/doc 180/320 — **live-подтверждено**; (4) e2e cleanup не удаляет `category_slug_routes` → orphan категории/UUID в select; (5) invalid image → generic `validation` not `upload_invalid` — **live-подтверждено** (.txt, bad-magic, oversize 5242881, MIME spoof heic/gif); (6) **DOC-03** category UI/server name/slug/short 240/220/500 vs DB CHECK 160/180/280 — live-подтверждено `23514` + generic `operation_failed`, **OWNER DECISION NEEDED** (без `test.fail()`).
 
 **Счётчики сценариев (реальный recount, см. §Live verification):** unique ADM IDs = **82**; table rows = **82** (0 дублей); P0/P1/P2 unique = **42/27/13**.
 
@@ -47,7 +47,7 @@
 | `/admin/login`                          | `…/admin/login/page.tsx`                    | Login                             | `signInAdmin` → Auth `signInWithPassword`                                                                                                               | auth.users, profiles, user_roles                                                 |
 | `/admin`                                | `…/(protected)/page.tsx`                    | Dashboard                         | `getAdminDashboard` (read)                                                                                                                              | products, categories, leads, lead_telegram_deliveries, assistant_knowledge       |
 | `/admin/categories`                     | `…/categories/page.tsx`                     | Category list                     | `listAdminCategories`                                                                                                                                   | categories, category_translations, products                                      |
-| `/admin/categories/new`                 | `…/categories/new/page.tsx`                 | Create category                   | `saveCategoryAction` → `admin_save_category`                                                                                                            | categories, category_translations, slug_routes                                   |
+| `/admin/categories/new`                 | `…/categories/new/page.tsx`                 | Create category                   | `saveCategoryAction` → `admin_save_category`                                                                                                            | categories, category_translations, category_slug_routes                          |
 | `/admin/categories/[id]`                | `…/categories/[id]/page.tsx`                | Edit + image + archive            | `saveCategoryAction`, `uploadCategoryImageAction` → `admin_set_category_image`, `setCategoryArchivedAction` → `admin_set_category_archived`             | categories, translations, category-images                                        |
 | `/admin/attribute-groups`               | `…/attribute-groups/page.tsx`               | Group list                        | `listAdminAttributeGroups`                                                                                                                              | attribute_groups, translations, attributes                                       |
 | `/admin/attribute-groups/new`           | `…/attribute-groups/new/page.tsx`           | Create group                      | `saveAttributeGroupAction` → `admin_save_attribute_group`                                                                                               | attribute_groups, attribute_group_translations                                   |
@@ -286,7 +286,14 @@
 | publish child under draft parent | clear parent message               | URL `?error=operation_failed`                    | `Операция не выполнена. Проверьте данные и повторите попытку.` (DB log: `Published child category requires a published parent`) | no            | `[OBSERVED]`, `[DB]`, server.err.log    |
 | HTML5 empty name                 | block                              | stays                                            | —                                                                                                                               | no            | `[OBSERVED]`                            |
 
-- **Data model:** `categories(parent_id, presentation_key, sort_order, is_published, archived_at)`, `category_translations(category_id, locale, name, slug, short_description, description, seo_title, seo_description)`, slug history/slug_routes; RPC `admin_save_category`.
+- **Data model:** `categories(parent_id, presentation_key, sort_order, is_published, archived_at)`, `category_translations(category_id, locale, name, slug, short_description, description, seo_title, seo_description)`, slug history **`category_slug_routes`** (table name confirmed live; not `slug_routes`); RPC `admin_save_category`.
+- **Live calibration `[OBSERVED]` (dev Turbopack; form selector `form[data-admin-form="category-save"]` = 1; `presentation_key` is `<select>`; second `<form>` on page is not `category-save` — scope tests by `data-admin-form`, never bare `form`):**
+  - UI/server maxLength: name **240**, slug **220**, short_description **500** `[CODE admin-forms.tsx:42,57,68]`, `[CODE actions.ts:58-65]` — HTML5 did **not** block 161/181/281/240/220/500.
+  - DB CHECK (stricter) `[DB initial_schema.sql:60,61-64,65]`: name **1–160**, slug **1–180**, short_description **1–280**.
+  - Observed: **160 / 180 / 280** → `?saved=1`, `Изменения сохранены.`, DB rows present.
+  - Observed: **161 / 181 / 281** and **240 / 220 / 500** → `?error=operation_failed`, UI `Операция не выполнена. Проверьте данные и повторите попытку.` — **not** `validation`. After each failed save: **0** rows in `categories`, `category_translations`, `category_slug_routes` (atomic; no partial rows).
+  - Raw server log (name_161 example): `code: '23514'`, `message: 'new row for relation "category_translations" violates check constraint "category_translations_name_check"'`. slug_181/220 → `category_translations_slug_check`; short_281/500 → `category_translations_short_description_check`.
+  - **DOC-03 OWNER DECISION NEEDED:** which limit is intended (UI/server 240/220/500 vs DB 160/180/280). **Do not assign `test.fail()` yet.**
 - **Side effects:** revalidate catalog + `/admin/categories` `[CODE actions.ts:95-96]`.
 - **Async:** server action ~1-3s; loading skeleton may flash `Загрузка`.
 - **Test data:** unique slug via `formatRunSlug("cat", runId, "ru")`; presentationKey `generic`; seed category UUID for parent tests.
@@ -295,7 +302,7 @@
 
 | ID | P | Title | Steps | Expected | Locator |
 | ---------- | --- | -------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| ADM-CAT-10 | P0 | Create draft category | fill RU+RO required, save | `?saved=1`, `Изменения сохранены.`, DB row | `form[data-admin-form="category-save"]`; `input[name="ru_name"]`; `getByRole("button", { name: "Сохранить категорию" })` [CODE admin-forms.tsx:126,199] |
+| ADM-CAT-10 | P0 | Create draft category + text-limit boundary | fill RU+RO required; also calibrate name 160/161/240, slug 180/181/220, short 280/281/500 one field at a time | **160/180/280 → `?saved=1`, `Изменения сохранены.`, DB row.** Above DB limits (161/181/281 and UI/server max 240/220/500) → `?error=operation_failed` + generic `Операция не выполнена. Проверьте данные и повторите попытку.` (not `validation`); **0** rows in categories / category_translations / category_slug_routes. **Intended max pending owner decision DOC-03** — assert current DB boundary as observed; do not `test.fail()` until owner picks intended limit. | `form[data-admin-form="category-save"]`; `input[name="ru_name"]`; `getByRole("button", { name: "Сохранить категорию" })` [CODE admin-forms.tsx:126,199] |
 | ADM-CAT-11 | P0 | Duplicate slug rejected | create with existing slug | `?error=duplicate key`, message `Такой slug…`, no row | duplicate slug: create with existing slugRu; alert `getByRole("alert")` text `Такой slug…` [CODE errors.ts:55] |
 | ADM-CAT-12 | P0 | Empty RO blocked | omit RO, try save | no redirect / HTML5; no DB row | omit RO; `getByRole("button", { name: "Сохранить категорию" })`; assert no navigation / HTML5 invalid |
 | ADM-CAT-13 | P1 | Invalid slug pattern | `Bad Slug`, save | client pattern blocks; if forced → `?error=validation` message `Проверьте обязательные поля и формат значений.` | `input[name="ru_slug"]` fill `Bad Slug`; submit [CODE admin-forms.tsx:54-60 pattern] |
@@ -303,7 +310,7 @@
 | ADM-CAT-15 | P1 | Child publish under draft parent | child published, parent draft | `?error=operation_failed` + generic message (bug) | child: `select[name="parent_id"]` + `input[name="is_published"]`; assert `?error=operation_failed` |
 | ADM-CAT-16 | P2 | SEO title/description intended max (BUG-01) | create/edit category; fill SEO title **180** chars, SEO description **320** chars (ADMIN_GUIDE §7.2 column «Максимум»); save | Intended: values length **180** / **320** accepted and persisted. Currently UI `maxLength` **70/160** `[CODE admin-forms.tsx:92,106]` truncates. **`test.fail()` annotation** + `// known bug BUG-01: UI SEO maxLength 70/160 vs doc max 180/320`. Minimal test: one last assertion on `inputValue.length` after fill. Do not assert current 70/160 as pass. Separate optional-empty case stays a **passing** test (no SEO required) `[CODE admin-forms.tsx:90-95]` |
 
-- **Discrepancies:** SEO UI caps 70/160 vs server/doc 180/320 `[CODE admin-forms.tsx]` vs `[CODE actions.ts:72-74]`, `[DOC ADMIN_GUIDE.md §7.2]`; missing sanitizer for parent publish message.
+- **Discrepancies:** SEO UI caps 70/160 vs server/doc 180/320 `[CODE admin-forms.tsx]` vs `[CODE actions.ts:72-74]`, `[DOC ADMIN_GUIDE.md §7.2]`; missing sanitizer for parent publish message. **DOC-03** UI/server name/slug/short 240/220/500 vs DB 160/180/280 — live `[OBSERVED]` 23514 + generic `operation_failed`; **OWNER DECISION NEEDED** (no `test.fail()` yet) — see Live calibration above.
 
 ---
 
@@ -326,11 +333,14 @@
   - Restore empty: `?saved=1`, back to draft
 - **Observed - failure:**
 
-| trigger                                                    | expected                     | actual                                   | message                                               | data changed?          | tag                            |
-| ---------------------------------------------------------- | ---------------------------- | ---------------------------------------- | ----------------------------------------------------- | ---------------------- | ------------------------------ |
-| archive category with products (`Холодильники` UUID …0001) | blocked                      | `?error=category_in_use`                 | `Категория используется товарами или подкатегориями.` | archived_at stays null | `[OBSERVED]`, `[DB]`           |
-| image invalid type (.txt)                                  | upload_invalid or validation | `?error=validation`                      | `Проверьте обязательные поля и формат значений.`      | no upload              | `[OBSERVED]`                   |
-| image oversize                                             | validation                   | same code path (not separately observed) | —                                                     | no                     | `[CODE validation.ts:139-155]` |
+| trigger                                                    | expected                     | actual                                           | message                                               | data changed?                                | tag                                           |
+| ---------------------------------------------------------- | ---------------------------- | ------------------------------------------------ | ----------------------------------------------------- | -------------------------------------------- | --------------------------------------------- |
+| archive category with products (`Холодильники` UUID …0001) | blocked                      | `?error=category_in_use`                         | `Категория используется товарами или подкатегориями.` | archived_at stays null                       | `[OBSERVED]`, `[DB]`                          |
+| image invalid type (.txt / text-as-.png)                   | upload_invalid or validation | `?error=validation`                              | `Проверьте обязательные поля и формат значений.`      | no upload                                    | `[OBSERVED]`                                  |
+| image oversize **5242881** bytes (5 MiB+1)                 | validation (CODE)            | **`?error=validation`** — **not** error boundary | `Проверьте обязательные поля и формат значений.`      | storage_path unchanged; no new bucket object | `[OBSERVED]` live calibration (dev Turbopack) |
+| MIME spoof `image/heic` / `image/gif` via setInputFiles    | validation                   | `?error=validation`                              | `Проверьте обязательные поля и формат значений.`      | storage_path stays null                      | `[OBSERVED]`                                  |
+
+`serverActions.bodySizeLimit` = **6mb** `[CODE next.config.ts:28-31]` — does **not** explain the oversize rejection (5242881 &lt; 6 MiB). App validation rejects at `file.size > 5 * 1024 * 1024` `[CODE validation.ts:141]`. Earlier live notes that oversized PNG showed error boundary `Не удалось загрузить раздел` / `Повторить` **could not be reproduced** on this calibration pass.
 
 - **Data model:** categories, category_translations, bucket `category-images`, path `categories/{uuid}.{ext}` `[CODE validation.ts:167-171]`.
 - **Side effects:** revalidate catalog; old image removed after new metadata `[CODE actions.ts:154-162]`; orphan cleanup log code `category_image_orphan`.
@@ -344,8 +354,8 @@
 | ADM-CAT-17 | P0 | Edit name + slug | save, list shows new name | `form[data-admin-form="category-save"]`; `input[name="ru_name"]`; `getByRole("button", { name: "Сохранить категорию" })` [CODE admin-forms.tsx:126-200] |
 | ADM-CAT-18 | P0 | Archive empty draft + restore | archive then `Восстановить`, draft again | `getByRole("button", { name: "Архивировать" })` / `"Восстановить"` [CODE categories/[id]/page.tsx:90-98] |
 | ADM-CAT-19 | P0 | Archive used category blocked | seed with products → `Категория используется…` | open seed `…/categories/10000000-0000-4000-8000-000000000001`; `getByRole("button", { name: "Архивировать" })` |
-| ADM-CAT-20 | P1 | Upload valid category image | saved, img visible, DB `image_storage_path` set | `getByLabel("Файл")` / `input[name="image"]`; `getByRole("button", { name: "Загрузить изображение" })` [CODE categories/[id]/page.tsx:64-74] |
-| ADM-CAT-21 | P1 | Invalid image type → intended `upload_invalid` (BUG-06) | upload non-image `.txt` and/or wrong-magic `.png` on category image form | Intended alert: `Файл должен быть JPEG, PNG, WebP или AVIF размером до 5 МБ.` (`upload_invalid`) `[CODE errors.ts:82]`, `[DOC ADMIN_GUIDE.md §7.5]`. Currently UI: `Проверьте обязательные поля и формат значений.` (`?error=validation`) `[OBSERVED]` — **`test.fail()`** + `// known bug BUG-06: AdminValidationError("image") → validation via actionCode`. Locator: `input[name="image"]`, `getByRole("button", { name: "Загрузить изображение" })`. **Note (not BUG-06, no test.fail):** oversized >5MiB `.png` → page `Не удалось загрузить раздел` + `Повторить` (error boundary / body path, not validation alert) `[OBSERVED]` — assert separately as document-only or dedicated non-fail scenario; do not mix with BUG-06 expected |
+| ADM-CAT-20 | P1 | Upload valid category image | saved, img visible, DB `image_storage_path` set; live: 5242879 / 1572864 / 3145728 bytes all `?saved=1` + bucket object size matches | `getByLabel("Файл")` / `input[name="image"]`; `getByRole("button", { name: "Загрузить изображение" })` [CODE categories/[id]/page.tsx:64-74] |
+| ADM-CAT-21 | P1 | Invalid image type → intended `upload_invalid` (BUG-06) | upload non-image `.txt`, wrong-magic `.png`, MIME spoof `image/heic`/`image/gif`, and oversize **5242881** on category image form | Intended alert: `Файл должен быть JPEG, PNG, WebP или AVIF размером до 5 МБ.` (`upload_invalid`) `[CODE errors.ts:82]`, `[DOC ADMIN_GUIDE.md §7.5]`. **Observed live (all invalid-image cases):** `Проверьте обязательные поля и формат значений.` (`?error=validation`) — **including oversize 5242881** (storage_path unchanged; **no** error boundary). Earlier note that oversized PNG shows `Не удалось загрузить раздел` **could not be reproduced**. **`test.fail()`** + `// known bug BUG-06: AdminValidationError("image") → validation via actionCode`. Locator: `input[name="image"]`, `getByRole("button", { name: "Загрузить изображение" })`. Oversize is the **same** `validation` path as BUG-06 here — do not assert boundary text |
 | ADM-CAT-22 | P2 | Slug history redirect | change slug of published category; old public URL redirects (needs public check) | no stable redirect assertion locator; use `page.request.get(old slug)` after slug change [CODE errors.ts reserved slug] |
 
 ---
@@ -759,30 +769,34 @@
 
 ### 5) Media / storage conventions
 
-| Bucket            | Path pattern                  | Limits          | Who          |
-| ----------------- | ----------------------------- | --------------- | ------------ |
-| `product-images`  | `{product_uuid}/{random}.{jpg | png             | webp         | avif}` | 5 MiB, magic bytes | admin upload via server |
-| `category-images` | `categories/{random}.{ext}`   | same validation | admin upload |
+| Bucket            | Path pattern                                     | Limits             | Who                     |
+| ----------------- | ------------------------------------------------ | ------------------ | ----------------------- |
+| `product-images`  | `{product_uuid}/{random}.{jpg\|png\|webp\|avif}` | 5 MiB, magic bytes | admin upload via server |
+| `category-images` | `categories/{random}.{ext}`                      | same validation    | admin upload            |
 
 - No overwrite (`upsert:false`); no UPDATE storage policy `[DOC docs/security.md]`.
 - Delete product image: mark pending → storage remove → finalize; cancel on storage error `[CODE actions.ts:555-571]`.
 - Orphans page is the supported repair path for product-images only (not category-images) `[DOC §18.6 note]`.
+- **Live `[OBSERVED]`:** `serverActions.bodySizeLimit` = **6mb** `[CODE next.config.ts:28-31]`. Category uploads **5242879**, **1572864**, **3145728** bytes → `?saved=1` + bucket object size matches. **5242881** → `?error=validation` + generic validation text; storage_path unchanged; **no** error boundary. MIME spoof `image/heic` / `image/gif` (setInputFiles buffer) → same `?error=validation`; storage_path stays null. `upload_invalid` **never observed** for any invalid-image case.
+- Truncated PNG with valid header: validator reads only first **16 bytes** `[CODE validation.ts:143-155]` → accepted and stored raw `[CODE actions.ts:132-143]`; DOC says content must match format `[DOC ADMIN_GUIDE.md:507]` — **OWNER DECISION NEEDED**, no `test.fail()`.
 
 ### 6) Slug / redirect system
 
 - Unique `(locale, slug)`; reserved after rename so old links redirect `[CODE errors.ts comments]`.
 - Invalid format blocked by HTML pattern + server `slugPattern` `[CODE validation.ts:7,78-82]`.
 - Duplicate → `Такой slug, код или SKU уже используется.` `[OBSERVED]`.
-- Known test cleanup issue: `adminDb.cleanUpByRunId` deletes categories without first deleting slug_routes; FK RESTRICT leaves orphans `[DOC docs/local-test-env.md]`, `[CODE e2e/helpers/admin-db.ts:88-107]`.
+- Real category history table name is **`category_slug_routes`** (product history: `product_slug_routes`) `[DB stage_4_catalog_seo.sql:3,17]` — live calibration queried `category_slug_routes`.
+- Known test cleanup issue: `adminDb.cleanUpByRunId` deletes categories without first deleting category_slug_routes; FK RESTRICT leaves orphans `[DOC docs/local-test-env.md]`, `[CODE e2e/helpers/admin-db.ts:88-107]`.
 - Observed leftover draft categories without translations after prior e2e `[OBSERVED]`.
 
 ### 7) Data reset / test isolation recommendations
 
 - Unique names: `generateRunId()` format `E2E-YYYYMMDD-HHMMSS-RAND` `[CODE e2e/fixtures/run-id.ts]`; slugs `formatRunSlug`.
-- Cleanup order if extending helper: leads → product_images → product_attribute_values → product_translations → products → category_attributes → category_translations → **slug_routes** → categories → attribute_options → attributes → attribute_groups → assistant_knowledge → storage objects.
+- Cleanup order if extending helper: leads → product_images → product_attribute_values → product_translations → products → category_attributes → category_translations → **category_slug_routes** → categories → attribute_options → attributes → attribute_groups → assistant_knowledge → storage objects.
 - When cleanup unreliable: `npm run db:reset:local` then `node scripts/local-test/ensure-admin.mjs` (reset deletes admin).
 - Mutating scripts must refuse non-local Supabase URL.
 - One server on :3000 only; production-like preferred for admin tests.
+- Admin e2e fixtures live under `e2e/fixtures/` — see **Test fixtures** section at end of this report.
 
 ### 8) Lead pipeline without Telegram
 
@@ -826,25 +840,25 @@ Shared fixtures/helpers worth writing first:
 
 1. **`login storageState`** — reuse `playwright/.auth/admin.json` via existing `setup` project.
 2. **`unique runId factory`** — `generateRunId()` + slug/sku helpers already in `e2e/helpers/factories`.
-3. **DB cleanup helper** — extend `adminDb.cleanUpByRunId` to delete **slug_routes** before categories; optional `db:reset` flag.
+3. **DB cleanup helper** — extend `adminDb.cleanUpByRunId` to delete **category_slug_routes** before categories; optional `db:reset` flag.
 4. **Non-admin helper** — create Auth user + active profile, no role; teardown deletes user.
 5. **Lead factory** — `POST /api/leads` with Origin + Idempotency-Key + runId comment (not rate-limit spam: max 1-2 leads/test).
 6. **Image fixtures** — tiny valid PNG/JPEG buffers; invalid `.txt`.
 
 Suggested order:
 
-| Order | Phase                                    | Suites                                                      |
-| ----- | ---------------------------------------- | ----------------------------------------------------------- |
-| 1     | P0 auth                                  | ADM-AUTH-01..05                                             |
-| 2     | P0 dashboard + categories create/archive | ADM-DASH-01, ADM-CAT-03, ADM-CAT-10..12                     |
-| 3     | P0 products create/publish/archive       | ADM-PROD-05..07, ADM-PROD-11..12                            |
-| 4     | P0 leads                                 | ADM-LEAD-01..03, ADM-LEAD-06..07                            |
-| 5     | P0 settings                              | ADM-SET-01..02                                              |
-| 6     | P1 attributes/groups/images              | ADM-AG-_, ADM-ATTR-_, ADM-PROD-13..15, ADM-CAT-20..21       |
-| 7     | P1 knowledge/logs/orphans                | ADM-KB-_, ADM-ORPH-_, ADM-LOGS-01                           |
-| 8     | P2 polish                                | next params, SEO limits, preview invalid locale, mobile nav |
+| Order | Phase                                    | Suites                                                                                   |
+| ----- | ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| 1     | P0 auth                                  | ADM-AUTH-01..05                                                                          |
+| 2     | P0 dashboard + categories create/archive | ADM-DASH-01, ADM-CAT-03, ADM-CAT-10..12 (ADM-CAT-10 includes live text-limit boundaries) |
+| 3     | P0 products create/publish/archive       | ADM-PROD-05..07, ADM-PROD-11..12                                                         |
+| 4     | P0 leads                                 | ADM-LEAD-01..03, ADM-LEAD-06..07                                                         |
+| 5     | P0 settings                              | ADM-SET-01..02                                                                           |
+| 6     | P1 attributes/groups/images              | ADM-AG-_, ADM-ATTR-_, ADM-PROD-13..15, ADM-CAT-20..21                                    |
+| 7     | P1 knowledge/logs/orphans                | ADM-KB-_, ADM-ORPH-_, ADM-LOGS-01                                                        |
+| 8     | P2 polish                                | next params, SEO limits, preview invalid locale, mobile nav                              |
 
-**Known-bug Playwright rule (report policy):** scenarios ADM-CAT-16 (BUG-01), ADM-LEAD-08/10 (BUG-05), ADM-CAT-21 (BUG-06) assert **intended** behavior only; each uses Playwright **`test.fail()` test-level annotation** + `// known bug BUG-0X: …`; minimal setup + **one** intended assertion last (`test.fail()` hides other failure reasons).
+**Known-bug Playwright rule (report policy):** scenarios ADM-CAT-16 (BUG-01), ADM-LEAD-08/10 (BUG-05), ADM-CAT-21 (BUG-06) assert **intended** behavior only; each uses Playwright **`test.fail()` test-level annotation** + `// known bug BUG-0X: …`; minimal setup + **one** intended assertion last (`test.fail()` hides other failure reasons). **DOC-03 (category text limits) and truncated-image decision are OWNER DECISION NEEDED — do not assign `test.fail()` until the intended limit is chosen.**
 
 Run against server on :3000; `reuseExistingServer: true`. Live BUG checks below ran on **dev** (`npm run dev`, NODE_ENV=development).
 
@@ -854,7 +868,7 @@ Run against server on :3000; `reuseExistingServer: true`. Live BUG checks below 
 
 Server start: detached `cmd /c npm run dev` PID 1260; **separate** check `curl http://127.0.0.1:3000/admin/login` → **200**; `Get-NetTCPConnection -LocalPort 3000` → OwnerProcess 8404. After checks server stopped by PID; port free.
 
-### Recount command output (after renumber + Locator column)
+### Recount command output (after live-calibration edits + prettier)
 
 ```
 UNIQUE_IDS_COUNT=82
@@ -863,11 +877,15 @@ UNIQUE_P0=42
 UNIQUE_P1=27
 UNIQUE_P2=13
 DUPLICATE_IDS: (none)
+```
+
+No new ADM IDs added. `ADM-CAT-10` Expected expanded with live text-limit boundaries; `ADM-CAT-20/21` image expectations updated to calibration facts. New discrepancy **DOC-03** (not an ADM ID).
 [CODE => 155
 [OBSERVED => 62
 [DOC => 33
 [DB] => 8
 [INFERRED => 5
+
 ```
 
 ADM-CAT renumber: list keeps `ADM-CAT-01..03`; create `ADM-CAT-10..16`; edit `ADM-CAT-17..22`. No duplicate IDs.
@@ -877,11 +895,13 @@ Every scenario table row has a Locator cell (82/82). Source cites: `admin-ui.tsx
 ### BUG-01 SEO maxLength — `[OBSERVED]` confirmed
 
 ```
+
 ru_seo_title_inputValue_length: 70
 ro_seo_title_inputValue_length: 70
 ru_seo_description_inputValue_length: 160
 maxlength_attr: "70"
-```
+
+````
 
 UI truncates 100-char SEO title to **70**; description to **160** `[CODE admin-forms.tsx:92,106]`. Server/doc allow 180/320. **Confirmed.**
 
@@ -905,7 +925,7 @@ UI truncates 100-char SEO title to **70**; description to **160** `[CODE admin-f
     "provider_message_id": null
   }
 }
-```
+````
 
 Shape: **object** (not array).
 
@@ -919,17 +939,22 @@ Shape: **object** (not array).
 - Real app flow: trigger creates outbox; `telegram.ts:101-102` with empty TELEGRAM_* → `permanent_failure` / `telegram_config_missing`. **Not seed-only.**
 - Code path still `repository.ts:517` `row.lead_telegram_deliveries[0]`. Root cause object-vs-array remains **hypothesis** until as-admin embed captured.
 
-### BUG-06 Image validation — `[OBSERVED]` confirmed
+### BUG-06 Image validation — `[OBSERVED]` confirmed (extended live calibration)
 
-| Case                    | Exact alert / page text                                | URL                                                    |
-| ----------------------- | ------------------------------------------------------ | ------------------------------------------------------ |
-| `.txt` file             | `Проверьте обязательные поля и формат значений.`       | `…/categories/10000000-…0001?error=validation`         |
-| text bytes named `.png` | `Проверьте обязательные поля и формат значений.`       | same `?error=validation`                               |
-| oversized >5MiB `.png`  | page error `Не удалось загрузить раздел` + `Повторить` | not a validation alert (server action/body limit path) |
+| Case                                      | Exact alert / page text                          | URL                                  | Notes                                                                                                                                                              |
+| ----------------------------------------- | ------------------------------------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `.txt` file                               | `Проверьте обязательные поля и формат значений.` | `…/categories/{id}?error=validation` | prior live                                                                                                                                                         |
+| text bytes named `.png`                   | `Проверьте обязательные поля и формат значений.` | same `?error=validation`             | prior live                                                                                                                                                         |
+| MIME spoof `image/heic` (36 B fake bytes) | `Проверьте обязательные поля и формат значений.` | `?error=validation`                  | `[OBSERVED]` live calibration; storage_path stays null                                                                                                             |
+| MIME spoof `image/gif` (37 B fake bytes)  | `Проверьте обязательные поля и формат значений.` | `?error=validation`                  | `[OBSERVED]` live calibration; storage_path stays null                                                                                                             |
+| oversize **5242881** bytes PNG            | `Проверьте обязательные поля и формат значений.` | `?error=validation`                  | `[OBSERVED]` live calibration; storage_path **unchanged**; **no** error boundary. Earlier observation of `Не удалось загрузить раздел` **could not be reproduced** |
+| valid sizes 5242879 / 1572864 / 3145728   | `Изменения сохранены.`                           | `?saved=1`                           | bucket object size matches; bodySizeLimit 6mb `[CODE next.config.ts:28-31]`                                                                                        |
 
-`upload_invalid` message (`Файл должен быть JPEG, PNG, WebP или AVIF размером до 5 МБ.`) **not shown** for .txt / bad-magic; `actionCode` maps `AdminValidationError` → `"validation"` `[CODE actions.ts:39-42]`.
+`upload_invalid` message (`Файл должен быть JPEG, PNG, WebP или AVIF размером до 5 МБ.`) **not shown** for any invalid-image case (txt, bad-magic, oversize, MIME spoof); `actionCode` maps `AdminValidationError` → `"validation"` `[CODE actions.ts:39-42]`.
 
-**Oversized PNG ≠ BUG-06:** separate observation under **ADM-CAT-21** as documentation note; **no** `test.fail()`; do not mix with `upload_invalid` intended assertion.
+**Oversized PNG is the same `validation` path as BUG-06** on this calibration pass (not a separate error-boundary observation). Do not assert boundary text. `test.fail()` policy for ADM-CAT-21 unchanged.
+
+**Truncated PNG with valid header — OWNER DECISION NEEDED:** validator reads only first 16 bytes `[CODE validation.ts:143-155]` → file accepted and stored raw `[CODE actions.ts:132-143]`. DOC: content must match format `[DOC ADMIN_GUIDE.md:507]`. No `test.fail()` assigned.
 
 ### What was NOT checked live
 
@@ -944,16 +969,17 @@ Shape: **object** (not array).
 
 ## Bugs and discrepancies (consolidated)
 
-| ID     | Area                         | Description                                                                                     | Evidence                                                                                                                                                                | Severity                                      |
-| ------ | ---------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| BUG-01 | SEO fields UI vs server      | CountedInput maxLength **70/160** vs server/doc **180/320**                                     | `[OBSERVED]` live: inputValue lengths 70/70/160; `[CODE admin-forms.tsx:92,106]`, `[CODE actions.ts:72-74]`, `[DOC ADMIN_GUIDE.md §7.2]`                                | Medium — confirmed                            |
-| BUG-02 | Dashboard Telegram card      | `Ошибки Telegram` → unfiltered `/admin/leads`                                                   | `[CODE page.tsx:22]` — **not reproduced** live (no click this pass)                                                                                                     | Low                                           |
-| BUG-03 | e2e cleanup                  | `cleanUpByRunId` doesn't delete slug_routes before categories; orphans/UUID options             | `[CODE e2e/helpers/admin-db.ts:88-107]`, `[DOC local-test-env.md:83]`, prior `[OBSERVED]` — **not re-run** this pass                                                    | High for tests                                |
-| BUG-04 | Error sanitizer miss         | `Published child category requires a published parent` → generic `Операция не выполнена…`       | `[CODE errors.ts:26-28]`, migration `20260805213001:54`; prior OBSERVED — **not re-run** (dev log not captured this pass)                                               | Medium — code confirmed, live re-run not done |
-| BUG-05 | Lead delivery UI             | Outbox exists in DB (`permanent_failure`) but UI `Delivery отсутствует.`; requeue button hidden | `[OBSERVED]` live UI + `[DB]` service-role embed object; `[CODE repository.ts:517]`; as-admin embed **NOT captured** (JWT expired)                                      | **High** — confirmed                          |
-| BUG-06 | Image invalid type message   | Category image wrong type → generic `validation` not `upload_invalid`                           | `[OBSERVED]` live: `.txt` and bad-magic `.png` → `Проверьте обязательные поля и формат значений.`; `[CODE actions.ts:39-42]`; oversized → `Не удалось загрузить раздел` | Low — confirmed                               |
-| DOC-01 | Assistant logs empty locally | Guide says telemetry often empty without service-role; local env has key → logs present         | `[DOC §16.3]` vs prior `[OBSERVED]`                                                                                                                                     | Low (doc)                                     |
-| DOC-02 | Draft categories without RO  | UI can only save with full RU/RO; leftover drafts exist from DB tooling                         | `[DOC §7.2]` vs prior `[OBSERVED]` orphan drafts                                                                                                                        | Medium for tests                              |
+| ID     | Area                                 | Description                                                                                                                                                                                         | Evidence                                                                                                                                                                                                                                                                                                                                         | Severity                                                                  |
+| ------ | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| BUG-01 | SEO fields UI vs server              | CountedInput maxLength **70/160** vs server/doc **180/320**                                                                                                                                         | `[OBSERVED]` live: inputValue lengths 70/70/160; `[CODE admin-forms.tsx:92,106]`, `[CODE actions.ts:72-74]`, `[DOC ADMIN_GUIDE.md §7.2]`                                                                                                                                                                                                         | Medium — confirmed                                                        |
+| BUG-02 | Dashboard Telegram card              | `Ошибки Telegram` → unfiltered `/admin/leads`                                                                                                                                                       | `[CODE page.tsx:22]` — **not reproduced** live (no click this pass)                                                                                                                                                                                                                                                                              | Low                                                                       |
+| BUG-03 | e2e cleanup                          | `cleanUpByRunId` doesn't delete category_slug_routes before categories; orphans/UUID options                                                                                                        | `[CODE e2e/helpers/admin-db.ts:88-107]`, `[DOC local-test-env.md:83]`, prior `[OBSERVED]` — **not re-run** this pass                                                                                                                                                                                                                             | High for tests                                                            |
+| BUG-04 | Error sanitizer miss                 | `Published child category requires a published parent` → generic `Операция не выполнена…`                                                                                                           | `[CODE errors.ts:26-28]`, migration `20260805213001:54`; prior OBSERVED — **not re-run** (dev log not captured this pass)                                                                                                                                                                                                                        | Medium — code confirmed, live re-run not done                             |
+| BUG-05 | Lead delivery UI                     | Outbox exists in DB (`permanent_failure`) but UI `Delivery отсутствует.`; requeue button hidden                                                                                                     | `[OBSERVED]` live UI + `[DB]` service-role embed object; `[CODE repository.ts:517]`; as-admin embed **NOT captured** (JWT expired)                                                                                                                                                                                                               | **High** — confirmed                                                      |
+| BUG-06 | Image invalid type message           | Category/product image invalid → generic `validation` not `upload_invalid` (txt, bad-magic, **oversize 5242881**, **MIME spoof heic/gif**)                                                          | `[OBSERVED]` live calibration: all → `Проверьте обязательные поля и формат значений.` + `?error=validation`; `[CODE actions.ts:39-42]`; oversize **not** error-boundary (earlier boundary note **not reproduced**)                                                                                                                               | Medium — confirmed for validation mapping                                 |
+| DOC-01 | Assistant logs empty locally         | Guide says telemetry often empty without service-role; local env has key → logs present                                                                                                             | `[DOC §16.3]` vs prior `[OBSERVED]`                                                                                                                                                                                                                                                                                                              | Low (doc)                                                                 |
+| DOC-02 | Draft categories without RO          | UI can only save with full RU/RO; leftover drafts exist from DB tooling                                                                                                                             | `[DOC §7.2]` vs prior `[OBSERVED]` orphan drafts                                                                                                                                                                                                                                                                                                 | Medium for tests                                                          |
+| DOC-03 | Category text limits UI/server vs DB | UI/server name/slug/short **240/220/500** `[CODE admin-forms.tsx:42,57,68]`, `[CODE actions.ts:58-65]`, `[DOC ADMIN_GUIDE.md §198-200]` vs DB CHECK **160/180/280** `[DB initial_schema.sql:60-65]` | `[OBSERVED]` live: 160/180/280 saved; 161/181/281 and 240/220/500 → Postgres **23514** (`category_translations_name_check` / `_slug_check` / `_short_description_check`) → UI `?error=operation_failed` generic `Операция не выполнена…` (not `validation`); **0** partial rows in categories / category_translations / **category_slug_routes** | **OWNER DECISION NEEDED: which limit is intended** — no `test.fail()` yet |
 
 ---
 
@@ -969,6 +995,29 @@ Shape: **object** (not array).
 | Double-submit concurrent edits                 | Limited observation; server actions not designed idempotent beyond RPC upserts                                                                                                    |
 | Mobile admin drawer behavior                   | Code exists (`☰`, Escape) `[CODE admin-navigation.tsx]`; not exercised in this run                                                                                               |
 | `pending_metadata` orphan UI                   | State defined; not force-tested beyond code path                                                                                                                                  |
+| **DOC-03 intended category text limit**        | **OWNER DECISION NEEDED** UI/server 240/220/500 vs DB 160/180/280 — live 23514 observed; no `test.fail()` yet                                                                     |
+| **Truncated image full-decode reject**         | **OWNER DECISION NEEDED** CODE magic-only 16 bytes vs DOC content-match `ADMIN_GUIDE.md:507` — truncated accepted/stored raw; no `test.fail()` yet                                |
+| Earlier oversized PNG error-boundary claim     | **Not reproduced** on live calibration — oversize 5242881 → `?error=validation` (same as BUG-06)                                                                                  |
+
+---
+
+## Test fixtures
+
+Fixtures for admin e2e live under **`e2e/fixtures/`** (see `e2e/fixtures/MANIFEST.md` and `e2e/fixtures/fixtures.json`). Generator: `e2e/fixtures/generate.mjs`; independent verifier: `e2e/fixtures/verify.mjs`. No HEIC **file** exists (no HEIC encoder in project) — for MIME-spoof tests use Playwright `setInputFiles` buffer with `mimeType: "image/heic"` (and `image/gif`) as in live calibration.
+
+**OWNER DECISION items from fixtures research (do not assert intended until owner decides):**
+
+| Item                                         | CODE/UI                                         | DOC / DB                                                            |
+| -------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------- |
+| Category name / slug / short_description max | UI+server **240 / 220 / 500**                   | DB **160 / 180 / 280** `[DB initial_schema.sql:60-65]` — **DOC-03** |
+| SEO title / description UI vs server         | UI **70 / 160** `[CODE admin-forms.tsx:92,106]` | server+DOC+DB **180 / 320** — **BUG-01** (`test.fail()`)            |
+| Attribute option `code` first character      | CODE/UI `[a-z][a-z0-9_]*`                       | DB `[a-z0-9][a-z0-9_]*` `[DB initial_schema.sql:194]`               |
+| Attribute `unit_code`                        | CODE length-only ≤80                            | UI+DB pattern `[a-z][a-z0-9_]*`                                     |
+| `presentation_key`                           | CODE requiredText 1–20                          | UI/DB enum `generic\|fridge\|stove\|vacuum`                         |
+| Truncated image with valid header            | CODE accepts magic-only 16 bytes                | DOC content-match `ADMIN_GUIDE.md:507`                              |
+| Image reject message                         | actual `validation` (generic text)              | intended catalog `upload_invalid` — **BUG-06** (`test.fail()`)      |
+
+Locator note: `/admin/categories/new` has `form[data-admin-form="category-save"]` (exactly 1) and a second `<form>` that is not the category form — **scope by `data-admin-form`**, never `page.locator("form")`. `presentation_key` is a `<select>`.
 
 ---
 
@@ -977,9 +1026,13 @@ Shape: **object** (not array).
 - [x] Every admin route in inventory has a section.
 - [x] Failure-path rows have observed results or explicit not-verified notes.
 - [x] No secrets written (only env var names; no keys/passwords).
-- [x] Locators on every scenario table row (82/82) with file:line or explicit alternative.
+- [x] Locators on every scenario table row with file:line or explicit alternative.
 - [x] Evidence tags present; live BUG results tagged `[OBSERVED]`.
-- [x] Scenario IDs unique after renumber (82 unique = 82 rows).
+- [x] Scenario IDs unique after renumber (see Live verification recount output).
 - [x] Counts in this file come from post-edit command output (see Live verification).
 - [x] Nothing in src/, migrations, e2e specs, configs changed for product code.
 - [x] as-admin embed explicitly marked **NOT captured** (JWT expired); service-role shown separately.
+- [x] Oversize error-boundary claim corrected to observed `?error=validation` (not reproduced boundary).
+- [x] DOC-03 (category text limits) recorded as OWNER DECISION NEEDED without `test.fail()`.
+- [x] Truncated-image OWNER DECISION recorded; no `test.fail()`.
+- [x] `upload_invalid` never observed for oversize / MIME spoof — BUG-06 evidence extended.
