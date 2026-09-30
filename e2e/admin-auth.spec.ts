@@ -80,4 +80,30 @@ test.describe("ADM-AUTH: login and access control", () => {
       page.getByRole("heading", { name: "Вход для администратора" }),
     ).toBeVisible();
   });
+
+  test("ADM-AUTH-06: next preserved for /admin/products", async ({ page }) => {
+    await page.goto("/admin/products");
+    await expect(page).toHaveURL(/\/admin\/login\?next=%2Fadmin%2Fproducts$/);
+    await page.getByLabel("Email").fill(adminEmail);
+    await page.getByLabel("Пароль").fill(adminPassword);
+    await page.getByRole("button", { name: "Войти" }).click();
+    await expect(page).toHaveURL(/\/admin\/products$/);
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Товары" }),
+    ).toBeVisible();
+  });
+
+  test("ADM-AUTH-07: external next rejected", async ({ page }) => {
+    await page.goto("/admin/login");
+    // Crafted external target injected via the form (hidden input, not
+    // visible, hence DOM-level set); safeAdminRedirectTarget must reject it.
+    await page.locator('input[name="next"]').evaluate((el) => {
+      (el as HTMLInputElement).value = "https://evil.example.com/phish";
+    });
+    await page.getByLabel("Email").fill(adminEmail);
+    await page.getByLabel("Пароль").fill(adminPassword);
+    await page.getByRole("button", { name: "Войти" }).click();
+    await expect(page).toHaveURL(/\/admin$/);
+    expect(new URL(page.url()).hostname).not.toBe("evil.example.com");
+  });
 });
