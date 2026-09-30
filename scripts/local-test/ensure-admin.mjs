@@ -56,9 +56,14 @@ const serviceRoleKey =
 const adminEmail =
   env.E2E_ADMIN_EMAIL || env.TEST_ADMIN_EMAIL || "admin.e2e@tehnosklad.local";
 const adminPassword =
-  env.E2E_ADMIN_PASSWORD ||
-  env.TEST_ADMIN_PASSWORD ||
-  "Tehnosklad-Test-2026!Pass";
+  env.E2E_ADMIN_PASSWORD || env.TEST_ADMIN_PASSWORD;
+
+if (!adminPassword) {
+  console.error(
+    "[ensure-admin] No password found. Set E2E_ADMIN_PASSWORD in .env.local",
+  );
+  process.exit(1);
+}
 
 // ---- Safety: refuse non-localhost ----
 let parsedUrl;
