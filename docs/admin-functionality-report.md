@@ -21,7 +21,22 @@
 
 Существующее e2e admin: SMOKE-01 (dashboard/nav), SMOKE-02 (create category + DB), admin-navigation-styles (hover CSS). Остальные admin-маршруты не покрыты.
 
-Ключевые наблюдённые баги: (1) карточка заявки не показывает существующий Telegram outbox (`Delivery отсутствует` при rows в DB); (2) sanitizer не знает `Published child category requires a published parent` → generic `Операция не выполнена…`; (3) UI SEO maxLength 70/160 vs server 180/320; (4) e2e cleanup не удаляет slug_routes → orphan категории/UUID в select.
+Ключевые наблюдённые баги: (1) карточка заявки не показывает существующий Telegram outbox (`Delivery отсутствует` при rows в DB) — **live-подтверждено на dev**; (2) sanitizer не знает `Published child category requires a published parent` → generic `Операция не выполнена…`; (3) UI SEO maxLength **70/160** vs server/doc 180/320 — **live-подтверждено**; (4) e2e cleanup не удаляет slug_routes → orphan категории/UUID в select; (5) invalid image → generic `validation` not `upload_invalid` — **live-подтверждено** (.txt и .png с неверным content).
+
+**Счётчики сценариев (реальный recount, см. §Live verification):** unique ADM IDs = **82**; table rows = **82** (0 дублей); P0/P1/P2 unique = **42/27/13**.
+
+### Policy: known bugs → intended behavior + `test.fail()`
+
+Для сценариев, затронутых **known bugs** (BUG-01, BUG-05, BUG-06):
+
+1. Assert **INTENDED** поведение (ADMIN_GUIDE / смысл кода), **не** фактический баг UI.
+2. `test.fail()` — **annotation уровня test** Playwright, **не** обёртка вокруг assertion (`test.fail(() => {…})` / expect внутри fail-callback не использовать).
+3. Тест с `test.fail()` должен быть **минимальным**: шаги setup **идентичны** passing-тесту, **одна** intended-assertion **последней**. Причина: `test.fail()` скрывает любой другой reason провала — лишние assert/setup-ошибки маскируются.
+4. Комментарий перед/над test: `// known bug BUG-0X: <одна строка>`.
+5. Suite остаётся green; после фикса бага `test.fail()` начнёт падать — сигнал закрыть bug и убрать annotation.
+6. В report Expected: intended-значение + «currently buggy → test.fail()»; **не** фиксировать баго-текст как pass-ожидание.
+
+Не `test.fail()`: intended = current (duplicate slug, archive in use, old_price validation, non-admin login, empty settings, HTML5 required).
 
 ---
 
@@ -163,15 +178,15 @@
 - **Existing e2e:** `auth.setup.ts` happy path only.
 - **Proposed scenarios:**
 
-| ID          | P   | Title                              | Steps                              | Expected                                                            |
+| ID | P | Title | Steps | Expected | Locator |
 | ----------- | --- | ---------------------------------- | ---------------------------------- | ------------------------------------------------------------------- |
-| ADM-AUTH-01 | P0  | Admin login succeeds               | goto login, fill env creds, submit | URL `/admin`, banner shows email                                    |
-| ADM-AUTH-02 | P0  | Anonymous /admin redirects         | goto `/admin` no cookies           | `/admin/login?next=%2Fadmin`                                        |
-| ADM-AUTH-03 | P0  | Wrong password neutral error       | fill bad password                  | `?error=credentials`, message `Вход не выполнен…`                   |
-| ADM-AUTH-04 | P0  | Non-admin same error               | create non-admin, login            | same message; no dashboard                                          |
-| ADM-AUTH-05 | P0  | Logout returns login               | click `Выйти`                      | `/admin/login`                                                      |
-| ADM-AUTH-06 | P1  | next preserved for /admin/products | unauth goto `/admin/products`      | login has `next=%2Fadmin%2Fproducts`; after login lands on products |
-| ADM-AUTH-07 | P2  | next external rejected             | login with crafted next (via form) | lands `/admin` not external                                         |
+| ADM-AUTH-01 | P0 | Admin login succeeds | goto login, fill env creds, submit | URL `/admin`, banner shows email | `getByLabel("Email")`, `getByLabel("Пароль")`, `getByRole("button", { name: "Войти" })` [CODE login/page.tsx:57-87] |
+| ADM-AUTH-02 | P0 | Anonymous /admin redirects | goto `/admin` no cookies | `/admin/login?next=%2Fadmin` | `page.goto("/admin")`; assert URL `/admin/login?next=` |
+| ADM-AUTH-03 | P0 | Wrong password neutral error | fill bad password | `?error=credentials`, message `Вход не выполнен…` | `getByRole("button", { name: "Войти" })`; alert `getByRole("alert")` / text `Вход не выполнен…` [CODE login/page.tsx:81-84] |
+| ADM-AUTH-04 | P0 | Non-admin same error | create non-admin, login | same message; no dashboard | same as AUTH-03; non-admin user created via service-role then UI login [CODE e2e/helpers/admin-auth.ts pattern] |
+| ADM-AUTH-05 | P0 | Logout returns login | click `Выйти` | `/admin/login` | `getByRole("button", { name: "Выйти" })` [CODE (protected)/layout.tsx:52-55] |
+| ADM-AUTH-06 | P1 | next preserved for /admin/products | unauth goto `/admin/products` | login has `next=%2Fadmin%2Fproducts`; after login lands on products | `input[name=next]` on login form [CODE login/page.tsx:56] |
+| ADM-AUTH-07 | P2 | next external rejected | login with crafted next (via form) | lands `/admin` not external | form field `input[name=next]` fill external URL; assert land `/admin` [CODE auth/redirect.ts] |
 
 - **Discrepancies:** none for login message (doc matches).
 - **Not verifiable locally:** production HTTPS Secure cookie behavior `[DOC docs/local-test-env.md]`.
@@ -198,12 +213,12 @@
 - **Existing e2e:** SMOKE-01 partial.
 - **Proposed scenarios:**
 
-| ID          | P   | Title                           | Steps                             | Expected                                   |
+| ID | P | Title | Steps | Expected | Locator |
 | ----------- | --- | ------------------------------- | --------------------------------- | ------------------------------------------ |
-| ADM-DASH-01 | P0  | Dashboard renders metrics + nav | login, goto `/admin`              | 7 metric cards, nav 10 links, header email |
-| ADM-DASH-02 | P1  | Published card filters products | click `Опубликовано`              | `/admin/products?publication=published`    |
-| ADM-DASH-03 | P1  | New leads card filters leads    | create lead, click `Новые заявки` | `/admin/leads?status=new` shows lead       |
-| ADM-DASH-04 | P1  | Recent leads empty or list      | fresh/reset or with lead          | empty text or lead links                   |
+| ADM-DASH-01 | P0 | Dashboard renders metrics + nav | login, goto `/admin` | 7 metric cards, nav 10 links, header email | `main#admin-main`; `getByRole("heading", { name: "Панель управления" })`; `nav` link names [CODE (protected)/page.tsx:32-44] |
+| ADM-DASH-02 | P1 | Published card filters products | click `Опубликовано` | `/admin/products?publication=published` | `getByRole("link", { name: /Опубликовано/ })` [CODE page.tsx:15-17] |
+| ADM-DASH-03 | P1 | New leads card filters leads | create lead, click `Новые заявки` | `/admin/leads?status=new` shows lead | `getByRole("link", { name: /Новые заявки/ })` [CODE page.tsx:21] |
+| ADM-DASH-04 | P1 | Recent leads empty or list | fresh/reset or with lead | empty text or lead links | `getByText("Заявок пока нет.")` or card links under `Последние заявки` [CODE page.tsx:54-73] |
 
 - **Discrepancies:** `Ошибки Telegram` links to unfiltered `/admin/leads` (not delivery-state filter) `[CODE page.tsx:22]`.
 - **Not verifiable:** production-only metric baselines.
@@ -220,6 +235,7 @@
   - card list `a.admin-list-card`: title = RU name or `Без названия RU`; meta = `{RO name or RO не заполнен} · {presentationKey}`; badges: `Черновик` / `Опубликована` / `Архив` + `{n} товаров`
   - empty: `Категорий нет` / `Создайте первую категорию каталога.`
   - Locator: `getByRole("link", { name: "Добавить категорию" })`; card by heading text
+  - Locators: `locator("a.admin-list-card").filter({ hasText: name })`; `getByRole("link", { name: "Добавить категорию" })`; empty `getByRole("heading", { name: "Категорий нет" })` [CODE admin-ui.tsx:89-91, categories/page.tsx:55-56]
 - **Intended:** list with publication status and product counts `[DOC §7.1]`.
 - **Observed - success:** seed categories `Холодильники` … `Кондиционеры` with `Опубликована` and `7 товаров`; leftover draft categories without translations appear as `Без названия RU` / `RO не заполнен · generic` and UUID hrefs `[OBSERVED]`.
 - **Observed - failure:** anonymous → login redirect.
@@ -230,11 +246,11 @@
 - **Existing e2e:** none dedicated (list not asserted in SMOKE-02 beyond create).
 - **Proposed scenarios:**
 
-| ID         | P   | Title                                     | Expected                                                  |
+| ID | P | Title | Expected | Locator |
 | ---------- | --- | ----------------------------------------- | --------------------------------------------------------- |
-| ADM-CAT-01 | P0  | List shows seed published categories      | `Холодильники` visible, badge `Опубликована`, `7 товаров` |
-| ADM-CAT-02 | P1  | Add link opens new form                   | `/admin/categories/new`                                   |
-| ADM-CAT-03 | P2  | Archived badge appears after archive test | `Архив` badge                                             |
+| ADM-CAT-01 | P0 | List shows seed published categories | `Холодильники` visible, badge `Опубликована`, `7 товаров` | `locator("a.admin-list-card").filter({ hasText: "Холодильники" })` [CODE admin-ui.tsx:89-91] |
+| ADM-CAT-02 | P1 | Add link opens new form | `/admin/categories/new` | `getByRole("link", { name: "Добавить категорию" })` [CODE categories/page.tsx:18-19] |
+| ADM-CAT-03 | P2 | Archived badge appears after archive test | `Архив` badge | `locator("a.admin-list-card").filter({ hasText: "Архив" })` after archive [CODE admin-ui.tsx:71-74] |
 
 - **Discrepancies:** e2e cleanup leaves draft categories without RU/RO; parent select shows raw UUIDs `[OBSERVED]`.
 
@@ -277,15 +293,15 @@
 - **Existing e2e:** SMOKE-02 happy path (uses `input[name=...]` and `button:has-text("Сохранить категорию")`).
 - **Proposed scenarios:**
 
-| ID         | P   | Title                            | Steps                         | Expected                                                                                                        |
+| ID | P | Title | Steps | Expected | Locator |
 | ---------- | --- | -------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| ADM-CAT-03 | P0  | Create draft category            | fill RU+RO required, save     | `?saved=1`, `Изменения сохранены.`, DB row                                                                      |
-| ADM-CAT-04 | P0  | Duplicate slug rejected          | create with existing slug     | `?error=duplicate key`, message `Такой slug…`, no row                                                           |
-| ADM-CAT-05 | P0  | Empty RO blocked                 | omit RO, try save             | no redirect / HTML5; no DB row                                                                                  |
-| ADM-CAT-06 | P1  | Invalid slug pattern             | `Bad Slug`, save              | client pattern blocks; if forced → `?error=validation` message `Проверьте обязательные поля и формат значений.` |
-| ADM-CAT-07 | P1  | Publish with full RU/RO          | check `Опубликована`, save    | badge `Опубликована` on list                                                                                    |
-| ADM-CAT-08 | P1  | Child publish under draft parent | child published, parent draft | `?error=operation_failed` + generic message (bug)                                                               |
-| ADM-CAT-09 | P2  | SEO fields optional              | leave SEO empty, save         | success                                                                                                         |
+| ADM-CAT-10 | P0 | Create draft category | fill RU+RO required, save | `?saved=1`, `Изменения сохранены.`, DB row | `form[data-admin-form="category-save"]`; `input[name="ru_name"]`; `getByRole("button", { name: "Сохранить категорию" })` [CODE admin-forms.tsx:126,199] |
+| ADM-CAT-11 | P0 | Duplicate slug rejected | create with existing slug | `?error=duplicate key`, message `Такой slug…`, no row | duplicate slug: create with existing slugRu; alert `getByRole("alert")` text `Такой slug…` [CODE errors.ts:55] |
+| ADM-CAT-12 | P0 | Empty RO blocked | omit RO, try save | no redirect / HTML5; no DB row | omit RO; `getByRole("button", { name: "Сохранить категорию" })`; assert no navigation / HTML5 invalid |
+| ADM-CAT-13 | P1 | Invalid slug pattern | `Bad Slug`, save | client pattern blocks; if forced → `?error=validation` message `Проверьте обязательные поля и формат значений.` | `input[name="ru_slug"]` fill `Bad Slug`; submit [CODE admin-forms.tsx:54-60 pattern] |
+| ADM-CAT-14 | P1 | Publish with full RU/RO | check `Опубликована`, save | badge `Опубликована` on list | `input[name="is_published"]` check; `getByRole("button", { name: "Сохранить категорию" })` [CODE admin-forms.tsx:181-185] |
+| ADM-CAT-15 | P1 | Child publish under draft parent | child published, parent draft | `?error=operation_failed` + generic message (bug) | child: `select[name="parent_id"]` + `input[name="is_published"]`; assert `?error=operation_failed` |
+| ADM-CAT-16 | P2 | SEO title/description intended max (BUG-01) | create/edit category; fill SEO title **180** chars, SEO description **320** chars (ADMIN_GUIDE §7.2 column «Максимум»); save | Intended: values length **180** / **320** accepted and persisted. Currently UI `maxLength` **70/160** `[CODE admin-forms.tsx:92,106]` truncates. **`test.fail()` annotation** + `// known bug BUG-01: UI SEO maxLength 70/160 vs doc max 180/320`. Minimal test: one last assertion on `inputValue.length` after fill. Do not assert current 70/160 as pass. Separate optional-empty case stays a **passing** test (no SEO required) `[CODE admin-forms.tsx:90-95]` |
 
 - **Discrepancies:** SEO UI caps 70/160 vs server/doc 180/320 `[CODE admin-forms.tsx]` vs `[CODE actions.ts:72-74]`, `[DOC ADMIN_GUIDE.md §7.2]`; missing sanitizer for parent publish message.
 
@@ -301,6 +317,7 @@
   - `CategoryForm` same fields as create + hidden `id`
   - section `Изображение категории`: help text `JPEG, PNG, WebP или AVIF до 5 MiB. При замене прежний файл удаляется после сохранения metadata.`; `input[name=image]` file required accept image/jpeg,png,webp,avif; button `Загрузить изображение`; existing img public URL
   - section `Архив`: help `Категорию с активными товарами или подкатегориями архивировать нельзя. История slug сохраняется.`; Confirm button `Архивировать` / `Восстановить`; confirm message `Архивировать категорию?` / `Восстановить категорию как черновик?`
+  - Locators: `form[data-admin-form="category-save"]`; `getByRole("button", { name: "Сохранить категорию" })`; image `input[name="image"]` + `getByRole("button", { name: "Загрузить изображение" })`; archive `getByRole("button", { name: "Архивировать" })` / `"Восстановить"` [CODE admin-forms.tsx:126, categories/[id]/page.tsx:74,97]
 - **Intended:** replace image then delete old; archive blocked if products/children; restore as draft `[DOC §7.5-7.6]`; RPC checks products/children `[CODE admin_set_category_archived]`.
 - **Observed - success:**
   - Edit + save: `?saved=1`, `Изменения сохранены.`, values persist
@@ -322,14 +339,14 @@
 - **Existing e2e:** none for edit/archive/image.
 - **Proposed scenarios:**
 
-| ID         | P   | Title                         | Expected                                                                         |
+| ID | P | Title | Expected | Locator |
 | ---------- | --- | ----------------------------- | -------------------------------------------------------------------------------- |
-| ADM-CAT-10 | P0  | Edit name + slug              | save, list shows new name                                                        |
-| ADM-CAT-11 | P0  | Archive empty draft + restore | archive then `Восстановить`, draft again                                         |
-| ADM-CAT-12 | P0  | Archive used category blocked | seed with products → `Категория используется…`                                   |
-| ADM-CAT-13 | P1  | Upload valid category image   | saved, img visible, DB `image_storage_path` set                                  |
-| ADM-CAT-14 | P1  | Invalid image type blocked    | `?error=validation`                                                              |
-| ADM-CAT-15 | P2  | Slug history redirect         | change slug of published category; old public URL redirects (needs public check) |
+| ADM-CAT-17 | P0 | Edit name + slug | save, list shows new name | `form[data-admin-form="category-save"]`; `input[name="ru_name"]`; `getByRole("button", { name: "Сохранить категорию" })` [CODE admin-forms.tsx:126-200] |
+| ADM-CAT-18 | P0 | Archive empty draft + restore | archive then `Восстановить`, draft again | `getByRole("button", { name: "Архивировать" })` / `"Восстановить"` [CODE categories/[id]/page.tsx:90-98] |
+| ADM-CAT-19 | P0 | Archive used category blocked | seed with products → `Категория используется…` | open seed `…/categories/10000000-0000-4000-8000-000000000001`; `getByRole("button", { name: "Архивировать" })` |
+| ADM-CAT-20 | P1 | Upload valid category image | saved, img visible, DB `image_storage_path` set | `getByLabel("Файл")` / `input[name="image"]`; `getByRole("button", { name: "Загрузить изображение" })` [CODE categories/[id]/page.tsx:64-74] |
+| ADM-CAT-21 | P1 | Invalid image type → intended `upload_invalid` (BUG-06) | upload non-image `.txt` and/or wrong-magic `.png` on category image form | Intended alert: `Файл должен быть JPEG, PNG, WebP или AVIF размером до 5 МБ.` (`upload_invalid`) `[CODE errors.ts:82]`, `[DOC ADMIN_GUIDE.md §7.5]`. Currently UI: `Проверьте обязательные поля и формат значений.` (`?error=validation`) `[OBSERVED]` — **`test.fail()`** + `// known bug BUG-06: AdminValidationError("image") → validation via actionCode`. Locator: `input[name="image"]`, `getByRole("button", { name: "Загрузить изображение" })`. **Note (not BUG-06, no test.fail):** oversized >5MiB `.png` → page `Не удалось загрузить раздел` + `Повторить` (error boundary / body path, not validation alert) `[OBSERVED]` — assert separately as document-only or dedicated non-fail scenario; do not mix with BUG-06 expected |
+| ADM-CAT-22 | P2 | Slug history redirect | change slug of published category; old public URL redirects (needs public check) | no stable redirect assertion locator; use `page.request.get(old slug)` after slug change [CODE errors.ts reserved slug] |
 
 ---
 
@@ -340,6 +357,7 @@
 - **UI map (list):** `h1` `Группы характеристик`; `Добавить группу`; badges `Активна`/`Выключена`, `{n} характеристик`; empty `Групп нет` / `Создайте группу для организации характеристик.`
 - **UI map (new/edit form):** fields `Код` (`name=code`, pattern `[a-z][a-z0-9_]*`, maxLength 80, required), `Порядок` (`sort_order`, required), `Название RU`/`Название RO` (maxLength 160, required), checkbox `Активна` (default checked); button `Сохранить группу`
 - **UI map (delete):** section `Удаление`; help `Удалить можно только пустую группу. Используемая группа завершит операцию понятной ошибкой.`; Confirm `Удалить группу`; message `Удалить пустую группу без возможности восстановления?`
+  - Locators: `getByRole("link", { name: "Добавить группу" })`; empty `getByRole("heading", { name: "Групп нет" })`; form `input[name="code"]`, `getByRole("button", { name: "Сохранить группу" })`; delete `getByRole("button", { name: "Удалить группу" })` [CODE attribute-groups/page.tsx:19,45, admin-forms.tsx:260, attribute-groups/[id]/page.tsx:42]
 - **Intended:** code technical stable; delete only empty `[DOC §8]`; RPC raises `attribute_group_in_use` if attributes exist `[CODE admin_delete_attribute_group]`.
 - **Observed - success:** seed had **0 groups** (`Групп нет`) `[OBSERVED]`; create group with code `ag_{run}` → `?saved=1`, `Изменения сохранены.`, title `Группа {run}`.
 - **Observed - failure:**
@@ -354,12 +372,12 @@
 - **Existing e2e:** none.
 - **Proposed scenarios:**
 
-| ID        | P   | Title                          | Expected                          |
+| ID | P | Title | Expected | Locator |
 | --------- | --- | ------------------------------ | --------------------------------- |
-| ADM-AG-01 | P0  | Create group RU/RO             | `?saved=1`, list card             |
-| ADM-AG-02 | P0  | Delete empty group             | redirect list `?saved=1`          |
-| ADM-AG-03 | P0  | Delete non-empty group blocked | `Группа содержит характеристики.` |
-| ADM-AG-04 | P1  | Invalid code                   | pattern/validation                |
+| ADM-AG-01 | P0 | Create group RU/RO | `?saved=1`, list card | `input[name="code"]`, `input[name="name_ru"]`, `input[name="name_ro"]`; `getByRole("button", { name: "Сохранить группу" })` [CODE admin-forms.tsx:205-261] |
+| ADM-AG-02 | P0 | Delete empty group | redirect list `?saved=1` | `getByRole("button", { name: "Удалить группу" })` on empty group [CODE attribute-groups/[id]/page.tsx:39-43] |
+| ADM-AG-03 | P0 | Delete non-empty group blocked | `Группа содержит характеристики.` | same button on group with attributes; alert `Группа содержит характеристики.` |
+| ADM-AG-04 | P1 | Invalid code | pattern/validation | `input[name="code"]` fill `AG123`; HTML5 pattern `[a-z][a-z0-9_]*` [CODE admin-forms.tsx:217-220] |
 
 ---
 
@@ -370,6 +388,7 @@
 - **UI map (list):** `Добавить характеристику`; badges `Активна`/`Выключена`, `{dataType}`, `{n} категорий`; empty `Характеристик нет`.
 - **UI map (new):** description `Сначала создайте метаданные RU/RO. Варианты и категории появятся после сохранения.`; fields `Код` (pattern, maxLength 80), `Группа` select, `Тип` select (`text`,`number`,`boolean`,`single_select`,`multi_select`,`color`; help about type change), `Код единицы` (optional, pattern), `Порядок`, checkboxes `Активна` (default on), `Фильтруемая`; RU/RO groups: `Название` required maxLength 160, `Подсказка` maxLength 500, `Обозначение единицы` maxLength 40; button `Сохранить характеристику`.
 - **UI map (detail):** description `Код: {code} · тип: {dataType}`; section `Варианты` (only single/multi_select) — OptionForm fields `Код`,`Порядок`,`Label RU`,`Label RO`,`Активен`; buttons `Добавить вариант`/`Сохранить вариант`, Confirm `Удалить вариант` message `Удалить неиспользуемый вариант?`; non-select: `Для этого типа варианты не поддерживаются.`; section `Категории`: bindings with `Обязательная`, `Фильтр` (disabled for text), `Порядок`, buttons `Сохранить привязку`, `Отвязать`; unbound form button `Привязать`; delete section Confirm `Удалить характеристику` message `Удалить неиспользуемую характеристику?`
+  - Locators: `getByRole("link", { name: "Добавить характеристику" })`; empty `getByRole("heading", { name: "Характеристик нет" })`; form `input[name="code"]`, `select[name="data_type"]`, `getByRole("button", { name: "Сохранить характеристику" })`; options/bindings `getByRole("button", { name: "Добавить вариант" })`, `"Привязать"`, `"Отвязать"`, `"Удалить характеристику"` [CODE attributes/page.tsx:19,48, admin-forms.tsx:411, attributes/[id]/page.tsx:98,238,283]
 - **Intended:** types locked after values/options; options only for selects; unbind blocked if product values exist; delete only unused `[DOC §9]`.
 - **Observed - success:** create number attribute `at_{run}` with group → `?saved=1`; create free attribute then delete → list `?saved=1`; option add/delete on select attribute → `?saved=1` `[OBSERVED]`; bind attribute to category → `?saved=1`.
 - **Observed - failure:**
@@ -385,16 +404,16 @@
 - **Existing e2e:** factories exist (`e2e/helpers/factories/attribute.ts`) but no admin UI spec for attributes.
 - **Proposed scenarios:**
 
-| ID          | P   | Title                              | Expected                                                       |
+| ID | P | Title | Expected | Locator |
 | ----------- | --- | ---------------------------------- | -------------------------------------------------------------- |
-| ADM-ATTR-01 | P0  | Create attribute RU/RO             | `?saved=1`                                                     |
-| ADM-ATTR-02 | P0  | Options only on select types       | number type shows `Для этого типа варианты не поддерживаются.` |
-| ADM-ATTR-03 | P0  | Add + delete option                | saved each time                                                |
-| ADM-ATTR-04 | P0  | Bind category required/filter      | `Сохранить привязку` saved                                     |
-| ADM-ATTR-05 | P1  | Type change after options blocked  | `Тип используемой характеристики менять нельзя.`               |
-| ADM-ATTR-06 | P1  | Delete free attribute              | list without it                                                |
-| ADM-ATTR-07 | P2  | Delete used attribute blocked      | `Характеристика уже используется.` / `in_use`                  |
-| ADM-ATTR-08 | P2  | Text type filter checkbox disabled | `Фильтр` disabled on binding form                              |
+| ADM-ATTR-01 | P0 | Create attribute RU/RO | `?saved=1` | `input[name="code"]`, `select[name="data_type"]`, `input[name="ru_name"]`, `input[name="ro_name"]`; `getByRole("button", { name: "Сохранить характеристику" })` [CODE admin-forms.tsx:273-412] |
+| ADM-ATTR-02 | P0 | Options only on select types | number type shows `Для этого типа варианты не поддерживаются.` | `select[name="data_type"]` = number; text `Для этого типа варианты не поддерживаются.` [CODE attributes/[id]/page.tsx:170-172] |
+| ADM-ATTR-03 | P0 | Add + delete option | saved each time | `getByRole("button", { name: "Добавить вариант" })` / `"Удалить вариант"` [CODE attributes/[id]/page.tsx:97-101,160] |
+| ADM-ATTR-04 | P0 | Bind category required/filter | `Сохранить привязку` saved | `select[name="category_id"]`; `getByRole("button", { name: "Привязать" })`; `getByRole("button", { name: "Сохранить привязку" })` [CODE attributes/[id]/page.tsx:229-272] |
+| ADM-ATTR-05 | P1 | Type change after options blocked | `Тип используемой характеристики менять нельзя.` | `select[name="data_type"]` change after options; alert `Тип используемой характеристики менять нельзя.` |
+| ADM-ATTR-06 | P1 | Delete free attribute | list without it | `getByRole("button", { name: "Удалить характеристику" })` [CODE attributes/[id]/page.tsx:283] |
+| ADM-ATTR-07 | P2 | Delete used attribute blocked | `Характеристика уже используется.` / `in_use` | same delete button on used attribute; alert `Характеристика уже используется.` / in_use |
+| ADM-ATTR-08 | P2 | Text type filter checkbox disabled | `Фильтр` disabled on binding form | `input[name="is_filterable"]` disabled when dataType=text [CODE attributes/[id]/page.tsx:212-217] |
 
 ---
 
@@ -415,12 +434,12 @@
 - **Existing e2e:** none for list/filters.
 - **Proposed scenarios:**
 
-| ID          | P   | Title                                       | Expected                         |
+| ID | P | Title | Expected | Locator |
 | ----------- | --- | ------------------------------------------- | -------------------------------- |
-| ADM-PROD-01 | P0  | List seed products                          | cards with brand/model/SKU/price |
-| ADM-PROD-02 | P0  | Search by SKU                               | filter unique SKU → 1 card       |
-| ADM-PROD-03 | P1  | Publication filter published/draft/archived | badges match filter              |
-| ADM-PROD-04 | P1  | Empty search empty state                    | `Ничего не найдено`              |
+| ADM-PROD-01 | P0 | List seed products | cards with brand/model/SKU/price | `locator("a.admin-list-card").filter({ hasText: SKU })` [CODE admin-ui.tsx:89] |
+| ADM-PROD-02 | P0 | Search by SKU | filter unique SKU → 1 card | `getByLabel("Поиск")` fill SKU; `getByRole("button", { name: "Применить" })` [CODE products/page.tsx:49-89] |
+| ADM-PROD-03 | P1 | Publication filter published/draft/archived | badges match filter | `select[name="publication"]` selectOption published/draft/archived |
+| ADM-PROD-04 | P1 | Empty search empty state | `Ничего не найдено` | `getByRole("heading", { name: "Ничего не найдено" })` [CODE products/page.tsx:134-138] |
 
 ---
 
@@ -454,14 +473,14 @@
 - **Existing e2e:** product factory exists; no admin create product spec yet.
 - **Proposed scenarios:**
 
-| ID          | P   | Title                            | Expected                                               |
+| ID | P | Title | Expected | Locator |
 | ----------- | --- | -------------------------------- | ------------------------------------------------------ |
-| ADM-PROD-05 | P0  | Create draft product             | `?saved=1`, draft badge                                |
-| ADM-PROD-06 | P0  | Publish draft with complete data | badge `Опубликован`, `Витрина RU/RO` links, public 200 |
-| ADM-PROD-07 | P0  | old_price <= price rejected      | validation message, no product                         |
-| ADM-PROD-08 | P1  | Publish without RO               | `Для публикации товара нужны полные переводы RU и RO.` |
-| ADM-PROD-09 | P1  | Publish under draft category     | `Сначала опубликуйте выбранную категорию.`             |
-| ADM-PROD-10 | P2  | Invalid price format             | validation                                             |
+| ADM-PROD-05 | P0 | Create draft product | `?saved=1`, draft badge | `form[data-admin-form="product-save"]`; `select[name="category_id"]`, `input[name="sku"]`; `getByRole("button", { name: "Сохранить товар" })` [CODE admin-forms.tsx:428,588] |
+| ADM-PROD-06 | P0 | Publish draft with complete data | badge `Опубликован`, `Витрина RU/RO` links, public 200 | `input[name="is_published"]` check; save; then storefront request |
+| ADM-PROD-07 | P0 | old_price <= price rejected | validation message, no product | `input[name="price"]`, `input[name="old_price"]`; save; alert `Проверьте обязательные поля и формат значений.` |
+| ADM-PROD-08 | P1 | Publish without RO | `Для публикации товара нужны полные переводы RU и RO.` | omit RO fields; save; alert about full RU and RO translations |
+| ADM-PROD-09 | P1 | Publish under draft category | `Сначала опубликуйте выбранную категорию.` | category draft; publish; alert `Сначала опубликуйте выбранную категорию.` |
+| ADM-PROD-10 | P2 | Invalid price format | validation | `input[name="price"]` invalid format; save; validation alert |
 
 ---
 
@@ -502,16 +521,16 @@
 - **Existing e2e:** none for product editor.
 - **Proposed scenarios:**
 
-| ID          | P   | Title                                      | Expected                           |
+| ID | P | Title | Expected | Locator |
 | ----------- | --- | ------------------------------------------ | ---------------------------------- |
-| ADM-PROD-11 | P0  | Checklist + publish + storefront links     | public product 200 after publish   |
-| ADM-PROD-12 | P0  | Archive product hides storefront           | public 404; admin badge `Архив`    |
-| ADM-PROD-13 | P0  | Upload image with alts                     | saved; image listed; primary badge |
-| ADM-PROD-14 | P0  | Delete image confirm                       | dialog; image removed after accept |
-| ADM-PROD-15 | P1  | Preview RU for draft                       | protected preview content          |
-| ADM-PROD-16 | P1  | Required attribute missing publish blocked | specific error (verify isolation)  |
-| ADM-PROD-17 | P1  | Product attributes save                    | values in DB/public                |
-| ADM-PROD-18 | P2  | Invalid locale preview                     | not-found                          |
+| ADM-PROD-11 | P0 | Checklist + publish + storefront links | public product 200 after publish | `getByRole("link", { name: "Витрина RU" })` / `"Preview RU"` [CODE products/[id]/page.tsx:103-133] |
+| ADM-PROD-12 | P0 | Archive product hides storefront | public 404; admin badge `Архив` | `form[data-admin-form="archive-product"] button` [CODE products/[id]/page.tsx:309-329] |
+| ADM-PROD-13 | P0 | Upload image with alts (happy path) | saved; image listed; primary badge | `form[data-admin-form="image-upload"]`; `input[name="alt_ru"]`, `input[name="alt_ro"]`; `getByRole("button", { name: "Загрузить изображение" })` [CODE products/[id]/page.tsx:159-205]. **Passing** test — do not use for BUG-06 invalid-type expected (see CAT-21 policy) |
+| ADM-PROD-14 | P0 | Delete image confirm | dialog; image removed after accept | `getByRole("button", { name: "Удалить изображение" })` [CODE products/[id]/page.tsx:288-293] |
+| ADM-PROD-15 | P1 | Preview RU for draft | protected preview content | `getByRole("link", { name: "Preview RU" })` → preview URL [CODE products/[id]/page.tsx:103-108] |
+| ADM-PROD-16 | P1 | Required attribute missing publish blocked | specific error (verify isolation) | no dedicated locator for checklist failure; assert alert text after publish attempt. **Not BUG-01/05/06** — no test.fail() policy; intended: `missing a required attribute` / related publish errors; retest isolation if checklist showed ✓ wrongly |
+| ADM-PROD-17 | P1 | Product attributes save | values in DB/public | `form` `button:has-text("Сохранить характеристики")` [CODE admin-forms.tsx:731-733] |
+| ADM-PROD-18 | P2 | Invalid locale preview | not-found | `page.goto(.../preview/xx)`; `getByRole("heading", { name: "Запись не найдена" })` [CODE not-found.tsx:6-7] |
 
 ---
 
@@ -542,13 +561,13 @@
 - **Existing e2e:** lead factory exists; no admin leads spec.
 - **Proposed scenarios:**
 
-| ID          | P   | Title                            | Expected                                 |
+| ID | P | Title | Expected | Locator |
 | ----------- | --- | -------------------------------- | ---------------------------------------- |
-| ADM-LEAD-01 | P0  | API create lead appears in admin | card in list with name/phone             |
-| ADM-LEAD-02 | P0  | Status filter                    | filter `new` shows only new              |
-| ADM-LEAD-03 | P0  | CSV export                       | 200, csv headers, filename               |
-| ADM-LEAD-04 | P1  | API validation errors            | 422 consent_required; 403 foreign origin |
-| ADM-LEAD-05 | P1  | Anonymous CSV blocked            | login redirect                           |
+| ADM-LEAD-01 | P0 | API create lead appears in admin | card in list with name/phone | `getByLabel("Поиск")` fill runId; `locator("a.admin-list-card")` [CODE leads/page.tsx:49-52] |
+| ADM-LEAD-02 | P0 | Status filter | filter `new` shows only new | `select[name="status"]`; `getByRole("button", { name: "Применить" })` [CODE leads/page.tsx:54-68] |
+| ADM-LEAD-03 | P0 | CSV export | 200, csv headers, filename | `getByRole("link", { name: "Экспорт CSV" })` [CODE leads/page.tsx:144-149] |
+| ADM-LEAD-04 | P1 | API validation errors | 422 consent_required; 403 foreign origin | API-level: `page.request.post("/api/leads")` with bad body/Origin |
+| ADM-LEAD-05 | P1 | Anonymous CSV blocked | login redirect | `page.request.get("/admin/leads/export")` as anonymous |
 
 ---
 
@@ -584,14 +603,14 @@
 - **Existing e2e:** none.
 - **Proposed scenarios:**
 
-| ID          | P   | Title                                    | Expected                                                                                |
+| ID | P | Title | Expected | Locator |
 | ----------- | --- | ---------------------------------------- | --------------------------------------------------------------------------------------- |
-| ADM-LEAD-06 | P0  | Detail shows contact + history           | fields visible; history rows                                                            |
-| ADM-LEAD-07 | P0  | Change status new→in_progress            | `?saved=1`; history audit; DB status                                                    |
-| ADM-LEAD-08 | P0  | Outbox visible with retry UI             | **currently fails** — document as bug; test asserts current actual OR desired after fix |
-| ADM-LEAD-09 | P1  | manual_review requires confirm_uncertain | submit without checkbox blocked by HTML required                                        |
-| ADM-LEAD-10 | P1  | Requeue after permanent_failure          | attempt_count increments; still permanent_failure without Telegram                      |
-| ADM-LEAD-11 | P2  | Double status submit                     | one history row for final status (observed single final)                                |
+| ADM-LEAD-06 | P0 | Detail shows contact + history | fields visible; history rows | `getByRole("heading", { level: 2, name: "Контакт" })` / `"Telegram delivery"` [CODE leads/[id]/page.tsx:41-245] |
+| ADM-LEAD-07 | P0 | Change status new→in_progress | `?saved=1`; history audit; DB status | `select[name="status"]`; `getByRole("button", { name: "Изменить статус" })` [CODE leads/[id]/page.tsx:128-141] |
+| ADM-LEAD-08 | P0 | Outbox visible with retry UI (BUG-05) | create lead via API (outbox row exists); open `/admin/leads/{id}` | **Intended:** Telegram delivery section shows state badge (`permanent_failure` / etc.), attempts, button `Повторно отправить в Telegram` `[CODE leads/[id]/page.tsx:162-241]`, `[DOC ADMIN_GUIDE.md §13]`. **Currently:** UI `Delivery отсутствует.`, button absent `[OBSERVED]` — **`test.fail()`** + `// known bug BUG-05: mapLead hides delivery embed (repository.ts:517)`. Locator: `getByRole("button", { name: "Повторно отправить в Telegram" })`. Do **not** assert `Delivery отсутствует.` as pass. Minimal: setup lead → open detail → last assertion retry button visible |
+| ADM-LEAD-09 | P1 | manual_review requires confirm_uncertain | submit without checkbox blocked by HTML required | `input[name="confirm_uncertain"]` required when state=manual_review [CODE leads/[id]/page.tsx:228-236] |
+| ADM-LEAD-10 | P1 | Requeue after permanent_failure (BUG-05) | lead with outbox `permanent_failure`; UI requeue once | **Intended:** after `Повторно отправить в Telegram`, outbox attempt_count increases / new attempt logged; without Telegram still `permanent_failure` `[CODE actions.ts:695-718]`. Blocked in practice while BUG-05 hides retry UI — **`test.fail()`** + `// known bug BUG-05: retry UI unreachable when delivery embed hidden`. Same setup as LEAD-08; last assertion attempt_count or retry button then DB/UI state |
+| ADM-LEAD-11 | P2 | Double status submit | one history row for final status (observed single final) | double-click `getByRole("button", { name: "Изменить статус" })`; inspect history list |
 
 ---
 
@@ -603,6 +622,7 @@
   - list: `Добавить статью`; badges `Активна`/`Выключена`, `Русский`/`Română`; empty `Статей нет` + helper text about catalog/contacts until articles added
   - new: description `Статью нужно добавить отдельно для каждого языка.`; `locale` select `Русский`/`Română`; checkbox `Активна` default on; `title` maxLength 160 help `Заголовок (по нему помощник находит статью, например «Доставка»)`; `content` maxLength 5000 help `Текст ответа (помощник отвечает только тем, что здесь написано)`; button `Сохранить статью`
   - delete: Confirm `Удалить статью без возможности восстановления?`
+  - Locators: `getByRole("link", { name: "Добавить статью" })`; empty `getByRole("heading", { name: "Статей нет" })`; form `select[name="locale"]`, `input[name="title"]`, `textarea[name="content"]`, `getByRole("button", { name: "Сохранить статью" })`; delete `getByRole("button", { name: "Удалить статью" })` [CODE assistant-knowledge/page.tsx:27,54, admin-forms.tsx:798, assistant-knowledge/[id]/page.tsx:42]
 - **Intended:** one article per locale; delete irreversible; prefer deactivate `[DOC §15]`.
 - **Observed - success:** seed 12 active articles (RU+RO); create article → `?saved=1`, `Изменения сохранены.`; deactivate+delete → list `?saved=1` `[OBSERVED]`.
 - **Observed - failure:** empty title blocked by HTML5 required (no server error observed) `[OBSERVED]`.
@@ -610,12 +630,12 @@
 - **Existing e2e:** none.
 - **Proposed scenarios:**
 
-| ID        | P   | Title               | Expected                         |
+| ID | P | Title | Expected | Locator |
 | --------- | --- | ------------------- | -------------------------------- |
-| ADM-KB-01 | P0  | Create RU article   | saved; list card Активна Русский |
-| ADM-KB-02 | P0  | Create RO article   | Română badge                     |
-| ADM-KB-03 | P1  | Deactivate + delete | list without article             |
-| ADM-KB-04 | P2  | Empty title blocked | no create                        |
+| ADM-KB-01 | P0 | Create RU article | saved; list card Активна Русский | `select[name="locale"]` ru; `input[name="title"]`; `textarea[name="content"]`; `getByRole("button", { name: "Сохранить статью" })` [CODE admin-forms.tsx:749-798] |
+| ADM-KB-02 | P0 | Create RO article | Română badge | same with `selectOption("ro")` |
+| ADM-KB-03 | P1 | Deactivate + delete | list without article | `getByRole("button", { name: "Удалить статью" })` [CODE assistant-knowledge/[id]/page.tsx:39-43] |
+| ADM-KB-04 | P2 | Empty title blocked | no create | omit title; `getByRole("button", { name: "Сохранить статью" })`; HTML5 required blocks |
 
 ---
 
@@ -634,11 +654,11 @@
 - **Existing e2e:** none.
 - **Proposed scenarios:**
 
-| ID          | P   | Title                    | Expected                 |
+| ID | P | Title | Expected | Locator |
 | ----------- | --- | ------------------------ | ------------------------ |
-| ADM-LOGS-01 | P1  | Period switch 7/30/90    | URL days=N; cards render |
-| ADM-LOGS-02 | P2  | Invalid days falls back  | still default report     |
-| ADM-LOGS-03 | P2  | Empty period empty state | `Запросов нет`           |
+| ADM-LOGS-01 | P1 | Period switch 7/30/90 | URL days=N; cards render | `getByRole("link", { name: "30 дней" })` / `"7 дней"` / `"90 дней"` [CODE assistant-logs/page.tsx:112-122] |
+| ADM-LOGS-02 | P2 | Invalid days falls back | still default report | `page.goto("/admin/assistant-logs?days=999")`; still render default report |
+| ADM-LOGS-03 | P2 | Empty period empty state | `Запросов нет` | `getByRole("heading", { name: "Запросов нет" })` [CODE assistant-logs/page.tsx:217-219] |
 
 ---
 
@@ -665,11 +685,11 @@
 - **Existing e2e:** none.
 - **Proposed scenarios:**
 
-| ID         | P   | Title                   | Expected                              |
+| ID | P | Title | Expected | Locator |
 | ---------- | --- | ----------------------- | ------------------------------------- |
-| ADM-SET-01 | P0  | Save address pair       | `?saved=1`; public page contains text |
-| ADM-SET-02 | P0  | Empty value rejected    | validation message                    |
-| ADM-SET-03 | P1  | Phone display/href save | public tel link update                |
+| ADM-SET-01 | P0 | Save address pair | `?saved=1`; public page contains text | `form[data-admin-form="setting-address"]`; `textarea[name="ru"]`, `textarea[name="ro"]`; `getByRole("button", { name: "Сохранить настройку" })` [CODE settings/page.tsx:30-64] |
+| ADM-SET-02 | P0 | Empty value rejected | validation message | same form; fill whitespace; save; alert `Проверьте обязательные поля и формат значений.` |
+| ADM-SET-03 | P1 | Phone display/href save | public tel link update | `form[data-admin-form="setting-phone_display"]` / `"phone_href"` [CODE settings/page.tsx:30-33] |
 
 ---
 
@@ -692,12 +712,12 @@
 - **Existing e2e:** none.
 - **Proposed scenarios:**
 
-| ID          | P   | Title                         | Expected                                                    |
+| ID | P | Title | Expected | Locator |
 | ----------- | --- | ----------------------------- | ----------------------------------------------------------- |
-| ADM-ORPH-01 | P0  | Empty orphans state           | `Orphan-файлов нет`                                         |
-| ADM-ORPH-02 | P0  | Clean orphan object           | object gone from storage                                    |
-| ADM-ORPH-03 | P0  | Clean missing metadata        | row gone from DB                                            |
-| ADM-ORPH-04 | P2  | pending_metadata restore path | create deletion_pending_at; reconcile restores or finalizes |
+| ADM-ORPH-01 | P0 | Empty orphans state | `Orphan-файлов нет` | `getByText("Orphan-файлов нет")` [CODE media/orphans/page.tsx:81-84] |
+| ADM-ORPH-02 | P0 | Clean orphan object | object gone from storage | `section.admin-card` by path; `getByRole("button", { name: "Очистить" })` [CODE media/orphans/page.tsx:62-74] |
+| ADM-ORPH-03 | P0 | Clean missing metadata | row gone from DB | same `Очистить` on missing_object card |
+| ADM-ORPH-04 | P2 | pending_metadata restore path | create deletion_pending_at; reconcile restores or finalizes | `getByRole("button", { name: "Восстановить / завершить" })` [CODE media/orphans/page.tsx:71-73] |
 
 ---
 
@@ -794,9 +814,9 @@
 | Assistant logs    | `/admin/assistant-logs`       | 3                  | 0      | 1      | 2      | no                   |
 | Settings          | `/admin/settings`             | 3                  | 2      | 1      | 0      | no                   |
 | Orphans           | `/admin/media/orphans`        | 4                  | 3      | 0      | 1      | no                   |
-| **Total**         |                               | **82**             | **42** | **29** | **11** |                      |
+| **Total**         |                               | **82**             | **42** | **27** | **13** |                      |
 
-Counts in matrix are planned scenario IDs listed in sections; P0 = auth + core CRUD + status + settings + export + archive/storefront effects.
+Counts from post-edit recount command (unique IDs by priority; ADM-CAT renumbered to unique 01–22). 42+27+13=82.
 
 ---
 
@@ -816,53 +836,150 @@ Suggested order:
 | Order | Phase                                    | Suites                                                      |
 | ----- | ---------------------------------------- | ----------------------------------------------------------- |
 | 1     | P0 auth                                  | ADM-AUTH-01..05                                             |
-| 2     | P0 dashboard + categories create/archive | ADM-DASH-01, ADM-CAT-03..05, ADM-CAT-10..12                 |
+| 2     | P0 dashboard + categories create/archive | ADM-DASH-01, ADM-CAT-03, ADM-CAT-10..12                     |
 | 3     | P0 products create/publish/archive       | ADM-PROD-05..07, ADM-PROD-11..12                            |
 | 4     | P0 leads                                 | ADM-LEAD-01..03, ADM-LEAD-06..07                            |
 | 5     | P0 settings                              | ADM-SET-01..02                                              |
-| 6     | P1 attributes/groups/images              | ADM-AG-_, ADM-ATTR-_, ADM-PROD-13..15, ADM-CAT-13..14       |
+| 6     | P1 attributes/groups/images              | ADM-AG-_, ADM-ATTR-_, ADM-PROD-13..15, ADM-CAT-20..21       |
 | 7     | P1 knowledge/logs/orphans                | ADM-KB-_, ADM-ORPH-_, ADM-LOGS-01                           |
 | 8     | P2 polish                                | next params, SEO limits, preview invalid locale, mobile nav |
 
-Run against production-like server on :3000; `reuseExistingServer: true`.
+**Known-bug Playwright rule (report policy):** scenarios ADM-CAT-16 (BUG-01), ADM-LEAD-08/10 (BUG-05), ADM-CAT-21 (BUG-06) assert **intended** behavior only; each uses Playwright **`test.fail()` test-level annotation** + `// known bug BUG-0X: …`; minimal setup + **one** intended assertion last (`test.fail()` hides other failure reasons).
+
+Run against server on :3000; `reuseExistingServer: true`. Live BUG checks below ran on **dev** (`npm run dev`, NODE_ENV=development).
+
+---
+
+## Live verification (dev server, run <run_id> 7ac9d8)
+
+Server start: detached `cmd /c npm run dev` PID 1260; **separate** check `curl http://127.0.0.1:3000/admin/login` → **200**; `Get-NetTCPConnection -LocalPort 3000` → OwnerProcess 8404. After checks server stopped by PID; port free.
+
+### Recount command output (after renumber + Locator column)
+
+```
+UNIQUE_IDS_COUNT=82
+TABLE_ROWS=82
+UNIQUE_P0=42
+UNIQUE_P1=27
+UNIQUE_P2=13
+DUPLICATE_IDS: (none)
+[CODE => 155
+[OBSERVED => 62
+[DOC => 33
+[DB] => 8
+[INFERRED => 5
+```
+
+ADM-CAT renumber: list keeps `ADM-CAT-01..03`; create `ADM-CAT-10..16`; edit `ADM-CAT-17..22`. No duplicate IDs.
+
+Every scenario table row has a Locator cell (82/82). Source cites: `admin-ui.tsx:89-91` for list cards; form `name=` / `getByRole` from page/form components. No `data-testid` in admin UI.
+
+### BUG-01 SEO maxLength — `[OBSERVED]` confirmed
+
+```
+ru_seo_title_inputValue_length: 70
+ro_seo_title_inputValue_length: 70
+ru_seo_description_inputValue_length: 160
+maxlength_attr: "70"
+```
+
+UI truncates 100-char SEO title to **70**; description to **160** `[CODE admin-forms.tsx:92,106]`. Server/doc allow 180/320. **Confirmed.**
+
+**BUG-01 decision:** ADMIN_GUIDE §7.2 table column **«Максимум»**: SEO title **180**, SEO description **320** — doc states maximum, not mere recommendation. Server `optionalText(..., 180/320)` `[CODE actions.ts:72-74]`. **Assigned:** intended max → Playwright `test.fail()` + `// known bug BUG-01`. **Not asserted as pass:** current 70/160 truncation.
+
+### BUG-05 Lead delivery UI — `[OBSERVED]` + `[DB]` service-role confirmed
+
+- API: `POST /api/leads` → **201** `{"ok":true}`
+- Matched leads for `comment=BUG05-7ac9d8`: **exactly 1**
+- **lead.id** = `8dcfa470-8d0b-4f56-bb3c-505979c74461`
+- **SERVICE-ROLE** embed raw JSON (labelled service-role, **not** admin):
+
+```json
+{
+  "id": "8dcfa470-8d0b-4f56-bb3c-505979c74461",
+  "lead_telegram_deliveries": {
+    "state": "permanent_failure",
+    "delivered_at": null,
+    "attempt_count": 1,
+    "last_error_code": "telegram_config_missing",
+    "provider_message_id": null
+  }
+}
+```
+
+Shape: **object** (not array).
+
+- **AS-ADMIN** embed: **NOT captured** — cookie `sb-127-auth-token` is `base64-{json}`; decoded `access_token` JWT later returned `{"error":"JWT expired"}` on PostgREST select. Never present service-role as admin.
+- **UI** (`/admin/leads/8dcfa470-8d0b-4f56-bb3c-505979c74461`):
+  - `hasDeliverySection: true`
+  - `hasAbsent: true`
+  - `hasPermanent: false`
+  - `hasRetry: false`
+  - exact UI text: `Telegram delivery` + `Delivery отсутствует.`
+- Real app flow: trigger creates outbox; `telegram.ts:101-102` with empty TELEGRAM_* → `permanent_failure` / `telegram_config_missing`. **Not seed-only.**
+- Code path still `repository.ts:517` `row.lead_telegram_deliveries[0]`. Root cause object-vs-array remains **hypothesis** until as-admin embed captured.
+
+### BUG-06 Image validation — `[OBSERVED]` confirmed
+
+| Case                    | Exact alert / page text                                | URL                                                    |
+| ----------------------- | ------------------------------------------------------ | ------------------------------------------------------ |
+| `.txt` file             | `Проверьте обязательные поля и формат значений.`       | `…/categories/10000000-…0001?error=validation`         |
+| text bytes named `.png` | `Проверьте обязательные поля и формат значений.`       | same `?error=validation`                               |
+| oversized >5MiB `.png`  | page error `Не удалось загрузить раздел` + `Повторить` | not a validation alert (server action/body limit path) |
+
+`upload_invalid` message (`Файл должен быть JPEG, PNG, WebP или AVIF размером до 5 МБ.`) **not shown** for .txt / bad-magic; `actionCode` maps `AdminValidationError` → `"validation"` `[CODE actions.ts:39-42]`.
+
+**Oversized PNG ≠ BUG-06:** separate observation under **ADM-CAT-21** as documentation note; **no** `test.fail()`; do not mix with `upload_invalid` intended assertion.
+
+### What was NOT checked live
+
+- as-admin PostgREST embed (JWT expired)
+- BUG-04 sanitizer live re-run (prior session only)
+- BUG-02 dashboard click
+- BUG-03 cleanup re-run
+- real Telegram send
+- production-like server for this live pass (dev only)
 
 ---
 
 ## Bugs and discrepancies (consolidated)
 
-| ID     | Area                         | Description                                                                                     | Evidence                                                                                                                                                                                                                                                                                                                                                                                       | Severity         |
-| ------ | ---------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| BUG-01 | SEO fields UI vs server      | CountedInput maxLength 70/160 vs server/doc 180/320                                             | `[CODE admin-forms.tsx:92,108]`, `[CODE actions.ts:72-74]`, `[DOC ADMIN_GUIDE.md §7.2]`                                                                                                                                                                                                                                                                                                        | Medium           |
-| BUG-02 | Dashboard Telegram card      | `Ошибки Telegram` → unfiltered `/admin/leads`                                                   | `[CODE page.tsx:22]`                                                                                                                                                                                                                                                                                                                                                                           | Low              |
-| BUG-03 | e2e cleanup                  | `cleanUpByRunId` doesn't delete slug_routes before categories; orphans/UUID options             | `[CODE e2e/helpers/admin-db.ts]`, `[DOC local-test-env.md]`, `[OBSERVED]`                                                                                                                                                                                                                                                                                                                      | High for tests   |
-| BUG-04 | Error sanitizer miss         | `Published child category requires a published parent` → generic `Операция не выполнена…`       | server.err.log, `[CODE errors.ts:26-28]`, migration line 54                                                                                                                                                                                                                                                                                                                                    | Medium           |
-| BUG-05 | Lead delivery UI             | Outbox exists in DB (`permanent_failure`) but UI `Delivery отсутствует.`; requeue button hidden | `[OBSERVED]`, `[DB]`, `[CODE repository.ts:517]`                                                                                                                                                                                                                                                                                                                                               | **High**         |
-| BUG-06 | Image invalid type message   | Category/product image wrong type → generic `validation` not `upload_invalid`                   | `[OBSERVED]`, `[CODE actions.ts:131]` maps AdminValidationError field `image` → code `validation` via actionCode? actually throws AdminValidationError("image") then sanitizeAdminError — need note: AdminValidationError goes through `sanitizeAdminError` which doesn't know field names; `actionCode` uses `error instanceof AdminValidationError ? "validation"` `[CODE actions.ts:39-42]` | Low              |
-| DOC-01 | Assistant logs empty locally | Guide says telemetry often empty without service-role; local env has key → logs present         | `[DOC §16.3]` vs `[OBSERVED]`                                                                                                                                                                                                                                                                                                                                                                  | Low (doc)        |
-| DOC-02 | Draft categories without RO  | UI can only save with full RU/RO; leftover drafts exist from DB tooling                         | `[DOC §7.2]` vs `[OBSERVED]` orphan drafts                                                                                                                                                                                                                                                                                                                                                     | Medium for tests |
+| ID     | Area                         | Description                                                                                     | Evidence                                                                                                                                                                | Severity                                      |
+| ------ | ---------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| BUG-01 | SEO fields UI vs server      | CountedInput maxLength **70/160** vs server/doc **180/320**                                     | `[OBSERVED]` live: inputValue lengths 70/70/160; `[CODE admin-forms.tsx:92,106]`, `[CODE actions.ts:72-74]`, `[DOC ADMIN_GUIDE.md §7.2]`                                | Medium — confirmed                            |
+| BUG-02 | Dashboard Telegram card      | `Ошибки Telegram` → unfiltered `/admin/leads`                                                   | `[CODE page.tsx:22]` — **not reproduced** live (no click this pass)                                                                                                     | Low                                           |
+| BUG-03 | e2e cleanup                  | `cleanUpByRunId` doesn't delete slug_routes before categories; orphans/UUID options             | `[CODE e2e/helpers/admin-db.ts:88-107]`, `[DOC local-test-env.md:83]`, prior `[OBSERVED]` — **not re-run** this pass                                                    | High for tests                                |
+| BUG-04 | Error sanitizer miss         | `Published child category requires a published parent` → generic `Операция не выполнена…`       | `[CODE errors.ts:26-28]`, migration `20260805213001:54`; prior OBSERVED — **not re-run** (dev log not captured this pass)                                               | Medium — code confirmed, live re-run not done |
+| BUG-05 | Lead delivery UI             | Outbox exists in DB (`permanent_failure`) but UI `Delivery отсутствует.`; requeue button hidden | `[OBSERVED]` live UI + `[DB]` service-role embed object; `[CODE repository.ts:517]`; as-admin embed **NOT captured** (JWT expired)                                      | **High** — confirmed                          |
+| BUG-06 | Image invalid type message   | Category image wrong type → generic `validation` not `upload_invalid`                           | `[OBSERVED]` live: `.txt` and bad-magic `.png` → `Проверьте обязательные поля и формат значений.`; `[CODE actions.ts:39-42]`; oversized → `Не удалось загрузить раздел` | Low — confirmed                               |
+| DOC-01 | Assistant logs empty locally | Guide says telemetry often empty without service-role; local env has key → logs present         | `[DOC §16.3]` vs prior `[OBSERVED]`                                                                                                                                     | Low (doc)                                     |
+| DOC-02 | Draft categories without RO  | UI can only save with full RU/RO; leftover drafts exist from DB tooling                         | `[DOC §7.2]` vs prior `[OBSERVED]` orphan drafts                                                                                                                        | Medium for tests                              |
 
 ---
 
 ## Open questions / inferred / not verifiable
 
-| Item                                           | Status                                                                                                             |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Lead delivery embed object vs array root cause | `[INFERRED]` from service-role JSON shape + code `[0]`; needs PostgREST response capture with admin JWT to confirm |
-| Required-attribute publish enforcement         | Observed one successful publish without filling attr; may be binding not marked required — retest in isolation     |
-| Category public slug redirect after rename     | Not fully observed; code reserves slug history `[CODE errors.ts]`                                                  |
-| Telegram real delivery / 429 retry             | Not verifiable without bot token; no local mock endpoint in code `[INFERRED]`                                      |
-| Production HTTPS Secure cookies                | Not verifiable on localhost HTTP; known for locale cookie only                                                     |
-| Double-submit concurrent edits                 | Limited observation; server actions not designed idempotent beyond RPC upserts                                     |
-| Mobile admin drawer behavior                   | Code exists (`☰`, Escape) `[CODE admin-navigation.tsx]`; not exercised in this run                                |
-| `pending_metadata` orphan UI                   | State defined; not force-tested beyond code path                                                                   |
+| Item                                           | Status                                                                                                                                                                            |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lead delivery embed object vs array root cause | Service-role raw JSON is **object**; as-admin embed **NOT captured** (JWT expired). UI still hides delivery. Hypothesis: `mapLead` expects array `[0]` `[CODE repository.ts:517]` |
+| Required-attribute publish enforcement         | Observed one successful publish without filling attr; may be binding not marked required — retest in isolation                                                                    |
+| Category public slug redirect after rename     | Not fully observed; code reserves slug history `[CODE errors.ts]`                                                                                                                 |
+| Telegram real delivery / 429 retry             | Not verifiable without bot token; no local mock endpoint in code `[INFERRED]`                                                                                                     |
+| Production HTTPS Secure cookies                | Not verifiable on localhost HTTP; known for locale cookie only                                                                                                                    |
+| Double-submit concurrent edits                 | Limited observation; server actions not designed idempotent beyond RPC upserts                                                                                                    |
+| Mobile admin drawer behavior                   | Code exists (`☰`, Escape) `[CODE admin-navigation.tsx]`; not exercised in this run                                                                                               |
+| `pending_metadata` orphan UI                   | State defined; not force-tested beyond code path                                                                                                                                  |
 
 ---
 
 ## Self-check
 
-- [x] Every admin route in inventory has a section (login, dashboard, categories list/new/edit, attribute-groups, attributes, products list/new/editor, leads list/detail/export, knowledge, logs, settings, orphans).
+- [x] Every admin route in inventory has a section.
 - [x] Failure-path rows have observed results or explicit not-verified notes.
 - [x] No secrets written (only env var names; no keys/passwords).
-- [x] Locators/messages from real observation or CODE/DOC, not memory.
-- [x] Evidence tags present on non-trivial claims.
-- [x] Nothing in src/, migrations, e2e specs, configs changed for product code (report + temp scripts only).
+- [x] Locators on every scenario table row (82/82) with file:line or explicit alternative.
+- [x] Evidence tags present; live BUG results tagged `[OBSERVED]`.
+- [x] Scenario IDs unique after renumber (82 unique = 82 rows).
+- [x] Counts in this file come from post-edit command output (see Live verification).
+- [x] Nothing in src/, migrations, e2e specs, configs changed for product code.
+- [x] as-admin embed explicitly marked **NOT captured** (JWT expired); service-role shown separately.
