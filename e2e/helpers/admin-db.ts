@@ -42,8 +42,8 @@ export const adminDb = {
   /**
    * Safely deletes all test entities associated with a specific RUN_ID.
    * Cascades down respecting foreign key constraints:
-   * leads -> product_images -> product_attribute_values -> products ->
-   * category_attributes -> attribute_options -> attributes -> attribute_groups -> categories.
+   * leads -> product_images -> product_attribute_values -> product_slug_routes -> products ->
+   * category_attributes -> category_slug_routes -> attribute_options -> attributes -> attribute_groups -> categories.
    */
   async cleanUpByRunId(runId: string) {
     if (!runId || runId.length < 5) return;
@@ -78,6 +78,11 @@ export const adminDb = {
           .from("product_attribute_values")
           .delete()
           .in("product_id", idList);
+        // slug history references products with FK RESTRICT — must go first
+        await supabase
+          .from("product_slug_routes")
+          .delete()
+          .in("product_id", idList);
         await supabase
           .from("product_translations")
           .delete()
@@ -97,6 +102,11 @@ export const adminDb = {
         );
         await supabase
           .from("category_attributes")
+          .delete()
+          .in("category_id", catIds);
+        // slug history references categories with FK RESTRICT — must go first
+        await supabase
+          .from("category_slug_routes")
           .delete()
           .in("category_id", catIds);
         await supabase
