@@ -92,3 +92,10 @@ test.fail: падение = баг подтверждён. Изолирован�
 | ADM-LEAD-08 | Outbox visible with retry UI (BUG-05) | при permanent_failure доставки кнопка «Повторно отправить в Telegram» видна | баг приложения (BUG-05), test.fail  | ожидаемое падение 3/3 стабильно; повторный прогон после «зависания» — окружение (логин/сервер) исправно |
 
 Повторный прогон подтвердил: предыдущее «зависание» было просто открытым idle-браузером playwright-cli (тест не выполнялся), а не сбоем окружения.
+
+
+## 2026-10-01 22:05 · npx playwright test e2e/{admin-categories,admin-products,admin-settings,admin-attributes}.spec.ts -g "ADM-CAT-10 creates / ADM-CAT-11 / ADM-CAT-20 / ADM-CAT-21 / ADM-PROD-05 / ADM-SET-01 / ADM-ATTR-01" --project=admin --headed --reporter=list --workers=1 --repeat-each=3 (точечный после задачи 0: limits.ts + параметризованные ошибки) · итог 22 passed / 0 failed
+
+Падений нет.
+
+Затронутые задачей 0 тесты создания/редактирования форм прошли 3/3. ADM-CAT-21 — ожидаемое `test.fail` (BUG-06 чинится в задаче 2). Сознательно не включены: `ADM-CAT-10 text limits` (закодировано старое поведение DOC-03, обновляется в задаче 4), `ADM-CAT-16` (test.fail снимается в задаче 5 после смены maxLength на 180/320), `ADM-CAT-15` (ожидает generic-текст B3, задача 3).
