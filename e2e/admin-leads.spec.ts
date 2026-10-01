@@ -212,6 +212,9 @@ test.describe("ADM-LEAD: leads list, detail and Telegram outbox", () => {
       button.click({ force: true }),
       button.click({ force: true }),
     ]);
+    // Fetch-based server action: wait for the ?saved=1 redirect before
+    // reading the DB, otherwise the write is still in flight (ADM-LEAD-07).
+    await expectSaved(page);
 
     await expect(page.locator('select[name="status"]')).toHaveValue(
       "contacted",
