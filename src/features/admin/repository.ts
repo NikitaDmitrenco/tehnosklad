@@ -323,7 +323,7 @@ function mapProduct(
   row: ProductRow,
   supabase: Awaited<ReturnType<typeof createServerUserSupabaseClient>>,
 ): AdminProduct {
-  const categoryTranslations = row.categories?.category_translations ?? [];
+  const categoryTranslations = embedList(row.categories?.category_translations);
   return {
     id: row.id,
     categoryId: row.category_id,
@@ -504,17 +504,39 @@ export async function listAdminLeads(
   return leads;
 }
 
-type LeadRow = Record<string, unknown> & {
-  lead_status_history: Array<Record<string, unknown>>;
-  lead_telegram_deliveries: Array<
-    Record<string, unknown> & {
-      lead_delivery_attempts: Array<Record<string, unknown>>;
-    }
-  >;
+type LeadDeliveryAttemptRow = Record<string, unknown>;
+
+type LeadDeliveryRow = Record<string, unknown> & {
+  // to-many embed, but normalized defensively in case the PostgREST shape
+  // changes (see embedObject/embedList below).
+  lead_delivery_attempts:
+    LeadDeliveryAttemptRow | LeadDeliveryAttemptRow[] | null;
 };
 
+type LeadRow = Record<string, unknown> & {
+  lead_status_history:
+    Array<Record<string, unknown>> | Record<string, unknown> | null;
+  // lead_id is UNIQUE (stage_5 migration), so PostgREST embeds the delivery
+  // as a single OBJECT, not an array. Reading it with [0] yielded undefined
+  // and the page claimed «Delivery отсутствует» although the outbox row
+  // existed (BUG-05) — both shapes are accepted here.
+  lead_telegram_deliveries: LeadDeliveryRow | LeadDeliveryRow[] | null;
+};
+
+// PostgREST returns an object for a to-one embed and an array for a to-many
+// embed; unique constraints can flip the expected shape between versions.
+function embedObject<T>(value: T | T[] | null | undefined): T | null {
+  if (value === null || value === undefined) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+function embedList<T>(value: T | T[] | null | undefined): T[] {
+  if (value === null || value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
 function mapLead(row: LeadRow): AdminLead {
-  const delivery = row.lead_telegram_deliveries[0];
+  const delivery = embedObject(row.lead_telegram_deliveries);
   return {
     id: String(row.id),
     status: row.status as AdminLead["status"],
@@ -539,7 +561,7 @@ function mapLead(row: LeadRow): AdminLead {
       : null,
     consentAt: String(row.consent_at),
     createdAt: String(row.created_at),
-    history: row.lead_status_history
+    history: embedList(row.lead_status_history)
       .map((item) => ({
         id: String(item.id),
         previousStatus: item.previous_status as AdminLead["status"] | null,
@@ -561,7 +583,7 @@ function mapLead(row: LeadRow): AdminLead {
           lastErrorCode: delivery.last_error_code
             ? String(delivery.last_error_code)
             : null,
-          attempts: delivery.lead_delivery_attempts.map((item) => ({
+          attempts: embedList(delivery.lead_delivery_attempts).map((item) => ({
             id: String(item.id),
             attemptNumber: Number(item.attempt_number),
             outcome: item.outcome ? String(item.outcome) : null,

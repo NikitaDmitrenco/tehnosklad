@@ -12,6 +12,11 @@ import {
   setLeadStatusAction,
 } from "@/features/admin/actions";
 import { requireAdmin } from "@/features/admin/auth/guard";
+import {
+  deliveryErrorText,
+  deliveryOutcomeLabel,
+  deliveryStateLabel,
+} from "@/features/admin/delivery-labels";
 import { getAdminLead } from "@/features/admin/repository";
 import { isUuid, minorToMoney } from "@/features/admin/validation";
 
@@ -174,7 +179,7 @@ export default async function LeadPage({
                     : "warning"
               }
             >
-              {lead.delivery.state}
+              {deliveryStateLabel(lead.delivery.state)}
             </StatusBadge>
           ) : null}
         </div>
@@ -190,8 +195,8 @@ export default async function LeadPage({
                 <dd>{lead.delivery.providerMessageId ?? "—"}</dd>
               </div>
               <div>
-                <dt className="font-bold text-stone-500">Последняя ошибка</dt>
-                <dd>{lead.delivery.lastErrorCode ?? "—"}</dd>
+                <dt className="font-bold text-stone-500">Причина</dt>
+                <dd>{deliveryErrorText(lead.delivery.lastErrorCode) ?? "—"}</dd>
               </div>
             </dl>
             <div className="mt-5 space-y-3">
@@ -202,12 +207,14 @@ export default async function LeadPage({
                 >
                   <strong>
                     Попытка {attempt.attemptNumber}:{" "}
-                    {attempt.outcome ?? "processing"}
+                    {deliveryOutcomeLabel(attempt.outcome)}
                   </strong>
                   <p className="mt-1 text-stone-600">
-                    HTTP {attempt.providerHttpStatus ?? "—"} · provider code{" "}
-                    {attempt.providerErrorCode ?? "—"} ·{" "}
-                    {attempt.errorCode ?? "без ошибки"}
+                    HTTP {attempt.providerHttpStatus ?? "—"} · код провайдера{" "}
+                    {attempt.providerErrorCode ?? "—"}
+                  </p>
+                  <p className="mt-1 text-stone-600">
+                    {deliveryErrorText(attempt.errorCode) ?? "Без ошибки."}
                   </p>
                   <time
                     className="mt-1 block text-xs text-stone-500"
@@ -224,9 +231,14 @@ export default async function LeadPage({
                 action={retryLeadTelegramDeliveryAction}
                 className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-900"
               >
+                <p>
+                  Кнопка отправит заявку в Telegram повторно: создастся новая
+                  попытка с тем же сообщением. Состояние доставки обновится по
+                  её результату.
+                </p>
                 <input name="lead_id" type="hidden" value={lead.id} />
                 {lead.delivery.state === "manual_review" ? (
-                  <label className="flex items-start gap-2">
+                  <label className="mt-3 flex items-start gap-2">
                     <input name="confirm_uncertain" required type="checkbox" />
                     <span>
                       Понимаю риск дубликата: предыдущая попытка могла быть
@@ -241,7 +253,11 @@ export default async function LeadPage({
             ) : null}
           </>
         ) : (
-          <p className="mt-4 text-sm text-stone-600">Delivery отсутствует.</p>
+          <p className="mt-4 text-sm text-stone-600">
+            Состояние доставки не создано: уведомление в Telegram не
+            формировалось. Если заявка только что создана — обновите страницу
+            через минуту.
+          </p>
         )}
       </section>
     </main>

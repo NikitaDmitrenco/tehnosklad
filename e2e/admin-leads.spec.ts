@@ -133,15 +133,12 @@ test.describe("ADM-LEAD: leads list, detail and Telegram outbox", () => {
     expect((data?.history ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
-  // known bug BUG-05: mapLead hides delivery embed (repository.ts:517)
+  // fixed BUG-05: delivery embed used to be read as an array and the UI hid
+  // the outbox row (repository.ts mapLead).
   test("ADM-LEAD-08: Outbox visible with retry UI (BUG-05)", async ({
     page,
     runId,
   }) => {
-    test.fail(
-      true,
-      "BUG-05: UI shows «Delivery отсутствует.» although the outbox row exists; retry button absent",
-    );
     // Insert trigger creates the Telegram outbox row.
     const lead = await createLeadDirect(runId);
     await page.goto(`/admin/leads/${lead.id}`);
@@ -151,17 +148,10 @@ test.describe("ADM-LEAD: leads list, detail and Telegram outbox", () => {
     ).toBeVisible();
   });
 
-  // known bug BUG-05: delivery section (incl. confirm checkbox) is hidden
-  // for every state — the report only annotated LEAD-08/10, but LEAD-09
-  // cannot pass until BUG-05 is fixed either (report discrepancy noted).
   test("ADM-LEAD-09: manual_review requires confirm_uncertain (BUG-05)", async ({
     page,
     runId,
   }) => {
-    test.fail(
-      true,
-      "BUG-05: retry form with confirm_uncertain is not rendered",
-    );
     const lead = await createLeadDirect(runId);
     await setLeadDeliveryState(lead.id, "manual_review");
     await page.goto(`/admin/leads/${lead.id}`);
@@ -178,15 +168,11 @@ test.describe("ADM-LEAD: leads list, detail and Telegram outbox", () => {
     expect(page.url()).not.toContain("saved=1");
   });
 
-  // known bug BUG-05: retry UI unreachable when delivery embed hidden
+  // fixed BUG-05: retry UI was unreachable while the delivery embed was hidden.
   test("ADM-LEAD-10: Requeue after permanent_failure (BUG-05)", async ({
     page,
     runId,
   }) => {
-    test.fail(
-      true,
-      "BUG-05: retry button hidden for a permanent_failure delivery",
-    );
     const lead = await createLeadDirect(runId);
     await setLeadDeliveryState(lead.id, "permanent_failure", {
       attemptCount: 1,

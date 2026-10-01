@@ -7,6 +7,7 @@ import {
   StatusBadge,
 } from "@/components/admin/admin-ui";
 import { requireAdmin } from "@/features/admin/auth/guard";
+import { deliveryStateLabel } from "@/features/admin/delivery-labels";
 import { listAdminLeads, listAdminProducts } from "@/features/admin/repository";
 
 export const dynamic = "force-dynamic";
@@ -173,7 +174,7 @@ export default async function LeadsPage({
                     lead.delivery.state,
                   ) ? (
                     <StatusBadge tone="danger">
-                      Telegram: {lead.delivery.state}
+                      Telegram: {deliveryStateLabel(lead.delivery.state)}
                     </StatusBadge>
                   ) : null}
                 </>
