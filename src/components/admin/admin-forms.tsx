@@ -20,6 +20,15 @@ import type {
   AdminProduct,
 } from "@/features/admin/types";
 import { minorToMoney } from "@/features/admin/validation";
+import {
+  assistantKnowledgeLimits,
+  attributeGroupLimits,
+  attributeLimits,
+  categoryTranslationLimits,
+  productLimits,
+  productTranslationLimits,
+  seoLimits,
+} from "@/lib/limits";
 
 function TranslationFields({
   locale,
@@ -31,6 +40,7 @@ function TranslationFields({
   product?: boolean;
 }) {
   const label = locale === "ru" ? "Русский" : "Română";
+  const limits = product ? productTranslationLimits : categoryTranslationLimits;
   return (
     <fieldset className="admin-card admin-form-grid">
       <legend className="px-2 text-lg font-black">{label}</legend>
@@ -39,7 +49,7 @@ function TranslationFields({
         <input
           className="field"
           defaultValue={value?.name}
-          maxLength={240}
+          maxLength={limits.name}
           name={`${locale}_name`}
           required
         />
@@ -54,7 +64,7 @@ function TranslationFields({
         <input
           className="field"
           defaultValue={value?.slug}
-          maxLength={220}
+          maxLength={limits.slug}
           name={`${locale}_slug`}
           pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
           required
@@ -65,7 +75,7 @@ function TranslationFields({
         <textarea
           className="field"
           defaultValue={value?.shortDescription}
-          maxLength={500}
+          maxLength={limits.shortDescription}
           name={`${locale}_short_description`}
           required
         />
@@ -75,7 +85,7 @@ function TranslationFields({
         <textarea
           className="field"
           defaultValue={value?.description}
-          maxLength={product ? 10000 : 5000}
+          maxLength={limits.description}
           name={`${locale}_description`}
           required
         />
@@ -89,9 +99,9 @@ function TranslationFields({
         </span>
         <CountedInput
           defaultValue={value?.seoTitle}
-          maxLength={70}
+          maxLength={limits.seoTitle}
           name={`${locale}_seo_title`}
-          warningThreshold={55}
+          warningThreshold={seoLimits.title.recommended}
         />
       </label>
       <label className="field-label">
@@ -103,9 +113,9 @@ function TranslationFields({
         </span>
         <CountedTextarea
           defaultValue={value?.seoDescription}
-          maxLength={160}
+          maxLength={limits.seoDescription}
           name={`${locale}_seo_description`}
-          warningThreshold={135}
+          warningThreshold={seoLimits.description.recommended}
         />
       </label>
     </fieldset>
@@ -214,7 +224,7 @@ export function AttributeGroupForm({ group }: { group?: AdminAttributeGroup }) {
         <input
           className="field"
           defaultValue={group?.code}
-          maxLength={80}
+          maxLength={attributeGroupLimits.code}
           name="code"
           pattern="[a-z][a-z0-9_]*"
           required
@@ -233,7 +243,7 @@ export function AttributeGroupForm({ group }: { group?: AdminAttributeGroup }) {
         <input
           className="field"
           defaultValue={group?.nameRu ?? ""}
-          maxLength={160}
+          maxLength={attributeGroupLimits.name}
           name="name_ru"
           required
         />
@@ -243,7 +253,7 @@ export function AttributeGroupForm({ group }: { group?: AdminAttributeGroup }) {
         <input
           className="field"
           defaultValue={group?.nameRo ?? ""}
-          maxLength={160}
+          maxLength={attributeGroupLimits.name}
           name="name_ro"
           required
         />
@@ -281,7 +291,7 @@ export function AttributeForm({
           <input
             className="field"
             defaultValue={attribute?.code}
-            maxLength={80}
+            maxLength={attributeLimits.code}
             name="code"
             pattern="[a-z][a-z0-9_]*"
             required
@@ -326,7 +336,7 @@ export function AttributeForm({
           <input
             className="field"
             defaultValue={attribute?.unitCode ?? ""}
-            maxLength={80}
+            maxLength={attributeLimits.unitCode}
             name="unit_code"
             pattern="[a-z][a-z0-9_]*"
           />
@@ -373,7 +383,7 @@ export function AttributeForm({
                     ? (attribute?.nameRu ?? "")
                     : (attribute?.nameRo ?? "")
                 }
-                maxLength={160}
+                maxLength={attributeLimits.name}
                 name={`${locale}_name`}
                 required
               />
@@ -387,7 +397,7 @@ export function AttributeForm({
                     ? (attribute?.helpRu ?? "")
                     : (attribute?.helpRo ?? "")
                 }
-                maxLength={500}
+                maxLength={attributeLimits.helpText}
                 name={`${locale}_help`}
               />
             </label>
@@ -400,7 +410,7 @@ export function AttributeForm({
                     ? (attribute?.unitRu ?? "")
                     : (attribute?.unitRo ?? "")
                 }
-                maxLength={40}
+                maxLength={attributeLimits.unitLabel}
                 name={`${locale}_unit`}
               />
             </label>
@@ -460,7 +470,7 @@ export function ProductForm({
           <input
             className="field"
             defaultValue={product?.brand}
-            maxLength={120}
+            maxLength={productLimits.brand}
             name="brand"
             required
           />
@@ -475,7 +485,7 @@ export function ProductForm({
           <input
             className="field"
             defaultValue={product?.model}
-            maxLength={160}
+            maxLength={productLimits.model}
             name="model"
             required
           />
@@ -490,7 +500,7 @@ export function ProductForm({
           <input
             className="field"
             defaultValue={product?.sku}
-            maxLength={80}
+            maxLength={productLimits.sku}
             name="sku"
             required
           />
@@ -641,7 +651,7 @@ export function ProductAttributesForm({
                     <input
                       className="field"
                       defaultValue={values[0]?.textRu ?? ""}
-                      maxLength={500}
+                      maxLength={attributeLimits.textValue}
                       name={`${name}_ru`}
                     />
                   </label>
@@ -650,7 +660,7 @@ export function ProductAttributesForm({
                     <input
                       className="field"
                       defaultValue={values[0]?.textRo ?? ""}
-                      maxLength={500}
+                      maxLength={attributeLimits.textValue}
                       name={`${name}_ro`}
                     />
                   </label>
@@ -774,7 +784,7 @@ export function AssistantKnowledgeForm({
         </span>
         <CountedInput
           defaultValue={article?.title}
-          maxLength={160}
+          maxLength={assistantKnowledgeLimits.title}
           name="title"
           required
         />
@@ -788,7 +798,7 @@ export function AssistantKnowledgeForm({
         </span>
         <CountedTextarea
           defaultValue={article?.content}
-          maxLength={5000}
+          maxLength={assistantKnowledgeLimits.content}
           name="content"
           required
           rows={8}

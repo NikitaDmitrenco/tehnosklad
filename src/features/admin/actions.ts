@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { requireAdmin } from "@/features/admin/auth/guard";
-import { sanitizeAdminError } from "@/features/admin/errors";
+import {
+  sanitizeAdminError,
+  serializeAdminError,
+} from "@/features/admin/errors";
 import {
   adminClientForStorage,
   callAdminRpc,
@@ -17,6 +20,17 @@ import { revalidateCatalogAfterMutation } from "@/features/catalog/cache";
 import { processTelegramDelivery } from "@/features/leads/delivery";
 import { createLeadStore } from "@/features/leads/repository";
 import { getOptionalTelegramEnvironment } from "@/lib/env/server";
+import {
+  altTextLimit,
+  assistantKnowledgeLimits,
+  attributeGroupLimits,
+  attributeLimits,
+  categoryTranslationLimits,
+  presentationKeyLimit,
+  productLimits,
+  productTranslationLimits,
+  siteSettingValueLimit,
+} from "@/lib/limits";
 import {
   AdminValidationError,
   attributeDataType,
@@ -37,9 +51,10 @@ import {
 } from "@/features/admin/validation";
 
 function actionCode(error: unknown) {
-  return error instanceof AdminValidationError
-    ? "validation"
-    : sanitizeAdminError(error).code;
+  // AdminValidationError extends AdminDataError, so a specific upload or
+  // field code (with its limit/actual params) reaches the page instead of
+  // collapsing into the generic "validation" banner.
+  return serializeAdminError(sanitizeAdminError(error));
 }
 
 function destination(path: string, error?: unknown) {
@@ -49,29 +64,43 @@ function destination(path: string, error?: unknown) {
   return `${path}?${query.toString()}`;
 }
 
+type TranslationLimits = {
+  name: number;
+  slug: number;
+  shortDescription: number;
+  description: number;
+  seoTitle: number;
+  seoDescription: number;
+};
+
 function translation(
   formData: FormData,
   locale: "ru" | "ro",
-  maxDescription: number,
+  limits: TranslationLimits,
 ) {
   return {
-    name: requiredText(formData, `${locale}_name`, 1, 240),
-    slug: slugValue(formData, `${locale}_slug`),
+    name: requiredText(formData, `${locale}_name`, 1, limits.name),
+    slug: slugValue(formData, `${locale}_slug`, limits.slug),
     shortDescription: requiredText(
       formData,
       `${locale}_short_description`,
       1,
-      500,
+      limits.shortDescription,
     ),
     description: requiredText(
       formData,
       `${locale}_description`,
       1,
-      maxDescription,
+      limits.description,
     ),
-    seoTitle: optionalText(formData, `${locale}_seo_title`, 180) ?? "",
+    seoTitle:
+      optionalText(formData, `${locale}_seo_title`, limits.seoTitle) ?? "",
     seoDescription:
-      optionalText(formData, `${locale}_seo_description`, 320) ?? "",
+      optionalText(
+        formData,
+        `${locale}_seo_description`,
+        limits.seoDescription,
+      ) ?? "",
   };
 }
 
@@ -85,11 +114,16 @@ export async function saveCategoryAction(formData: FormData): Promise<never> {
     const result = await callAdminRpc("admin_save_category", {
       p_id: id,
       p_parent_id: optionalUuidValue(formData.get("parent_id"), "parent_id"),
-      p_presentation_key: requiredText(formData, "presentation_key", 1, 20),
+      p_presentation_key: requiredText(
+        formData,
+        "presentation_key",
+        1,
+        presentationKeyLimit,
+      ),
       p_sort_order: integerValue(formData.get("sort_order"), "sort_order"),
       p_is_published: checkboxValue(formData, "is_published"),
-      p_ru: translation(formData, "ru", 5000),
-      p_ro: translation(formData, "ro", 5000),
+      p_ru: translation(formData, "ru", categoryTranslationLimits),
+      p_ro: translation(formData, "ro", categoryTranslationLimits),
     });
     target = `/admin/categories/${String(result.data)}`;
     revalidateCatalogAfterMutation("category");
@@ -163,10 +197,7 @@ export async function uploadCategoryImageAction(
     revalidateCatalogAfterMutation("category");
     revalidatePath(`/admin/categories/${categoryId}`);
   } catch (caught) {
-    error =
-      caught instanceof AdminValidationError
-        ? caught
-        : sanitizeAdminError(caught);
+    error = sanitizeAdminError(caught);
   }
   redirect(destination(`/admin/categories/${categoryId}`, error));
 }
@@ -186,8 +217,18 @@ export async function saveAttributeGroupAction(
       p_code: codeValue(formData, "code"),
       p_sort_order: integerValue(formData.get("sort_order"), "sort_order"),
       p_is_active: checkboxValue(formData, "is_active"),
-      p_name_ru: requiredText(formData, "name_ru", 1, 160),
-      p_name_ro: requiredText(formData, "name_ro", 1, 160),
+      p_name_ru: requiredText(
+        formData,
+        "name_ru",
+        1,
+        attributeGroupLimits.name,
+      ),
+      p_name_ro: requiredText(
+        formData,
+        "name_ro",
+        1,
+        attributeGroupLimits.name,
+      ),
     });
     target = `/admin/attribute-groups/${String(result.data)}`;
     revalidateCatalogAfterMutation("attribute");
@@ -231,20 +272,28 @@ export async function saveAttributeAction(formData: FormData): Promise<never> {
       p_group_id: optionalUuidValue(formData.get("group_id"), "group_id"),
       p_code: codeValue(formData, "code"),
       p_data_type: type,
-      p_unit_code: optionalText(formData, "unit_code", 80),
+      p_unit_code: optionalText(
+        formData,
+        "unit_code",
+        attributeLimits.unitCode,
+      ),
       p_is_filterable:
         type === "text" ? false : checkboxValue(formData, "is_filterable"),
       p_sort_order: integerValue(formData.get("sort_order"), "sort_order"),
       p_is_active: checkboxValue(formData, "is_active"),
       p_ru: {
-        name: requiredText(formData, "ru_name", 1, 160),
-        helpText: optionalText(formData, "ru_help", 500) ?? "",
-        unitLabel: optionalText(formData, "ru_unit", 40) ?? "",
+        name: requiredText(formData, "ru_name", 1, attributeLimits.name),
+        helpText:
+          optionalText(formData, "ru_help", attributeLimits.helpText) ?? "",
+        unitLabel:
+          optionalText(formData, "ru_unit", attributeLimits.unitLabel) ?? "",
       },
       p_ro: {
-        name: requiredText(formData, "ro_name", 1, 160),
-        helpText: optionalText(formData, "ro_help", 500) ?? "",
-        unitLabel: optionalText(formData, "ro_unit", 40) ?? "",
+        name: requiredText(formData, "ro_name", 1, attributeLimits.name),
+        helpText:
+          optionalText(formData, "ro_help", attributeLimits.helpText) ?? "",
+        unitLabel:
+          optionalText(formData, "ro_unit", attributeLimits.unitLabel) ?? "",
       },
     });
     target = `/admin/attributes/${String(result.data)}`;
@@ -287,8 +336,18 @@ export async function saveAttributeOptionAction(
       p_code: codeValue(formData, "code"),
       p_sort_order: integerValue(formData.get("sort_order"), "sort_order"),
       p_is_active: checkboxValue(formData, "is_active"),
-      p_label_ru: requiredText(formData, "label_ru", 1, 160),
-      p_label_ro: requiredText(formData, "label_ro", 1, 160),
+      p_label_ru: requiredText(
+        formData,
+        "label_ru",
+        1,
+        attributeLimits.optionLabel,
+      ),
+      p_label_ro: requiredText(
+        formData,
+        "label_ro",
+        1,
+        attributeLimits.optionLabel,
+      ),
     });
     revalidateCatalogAfterMutation("attribute");
     revalidatePath(`/admin/attributes/${attributeId}`);
@@ -357,9 +416,9 @@ export async function saveProductAction(formData: FormData): Promise<never> {
     const result = await callAdminRpc("admin_save_product", {
       p_id: id,
       p_category_id: uuidValue(formData.get("category_id"), "category_id"),
-      p_brand: requiredText(formData, "brand", 1, 120),
-      p_model: requiredText(formData, "model", 1, 160),
-      p_sku: requiredText(formData, "sku", 1, 80),
+      p_brand: requiredText(formData, "brand", 1, productLimits.brand),
+      p_model: requiredText(formData, "model", 1, productLimits.model),
+      p_sku: requiredText(formData, "sku", 1, productLimits.sku),
       p_price_minor: priceMinor,
       p_old_price_minor: oldPriceMinor,
       p_availability: availability,
@@ -369,8 +428,8 @@ export async function saveProductAction(formData: FormData): Promise<never> {
       p_is_new: checkboxValue(formData, "is_new"),
       p_is_published: checkboxValue(formData, "is_published"),
       p_sort_order: integerValue(formData.get("sort_order"), "sort_order"),
-      p_ru: translation(formData, "ru", 10_000),
-      p_ro: translation(formData, "ro", 10_000),
+      p_ru: translation(formData, "ru", productTranslationLimits),
+      p_ro: translation(formData, "ro", productTranslationLimits),
     });
     target = `/admin/products/${String(result.data)}`;
     revalidateCatalogAfterMutation("product");
@@ -405,7 +464,12 @@ export async function saveProductAttributesAction(
         const ru = String(formData.get(`${name}_ru`) ?? "").trim();
         const ro = String(formData.get(`${name}_ro`) ?? "").trim();
         if (ru || ro) {
-          if (!ru || !ro || ru.length > 500 || ro.length > 500)
+          if (
+            !ru ||
+            !ro ||
+            ru.length > attributeLimits.textValue ||
+            ro.length > attributeLimits.textValue
+          )
             throw new AdminValidationError(name);
           values.push({ attributeId: attribute.id, ru, ro });
         }
@@ -496,8 +560,8 @@ export async function uploadProductImageAction(
       await callAdminRpc("admin_create_product_image", {
         p_product_id: productId,
         p_storage_path: uploadedPath,
-        p_alt_ru: requiredText(formData, "alt_ru", 1, 240),
-        p_alt_ro: requiredText(formData, "alt_ro", 1, 240),
+        p_alt_ru: requiredText(formData, "alt_ru", 1, altTextLimit),
+        p_alt_ro: requiredText(formData, "alt_ro", 1, altTextLimit),
         p_sort_order: integerValue(formData.get("sort_order"), "sort_order"),
         p_is_primary: checkboxValue(formData, "is_primary"),
       });
@@ -514,10 +578,7 @@ export async function uploadProductImageAction(
     revalidateCatalogAfterMutation("product");
     revalidatePath(`/admin/products/${productId}`);
   } catch (caught) {
-    error =
-      caught instanceof AdminValidationError
-        ? caught
-        : sanitizeAdminError(caught);
+    error = sanitizeAdminError(caught);
   }
   redirect(destination(`/admin/products/${productId}`, error));
 }
@@ -531,8 +592,8 @@ export async function updateProductImageAction(
   try {
     await callAdminRpc("admin_update_product_image", {
       p_image_id: uuidValue(formData.get("image_id"), "image_id"),
-      p_alt_ru: requiredText(formData, "alt_ru", 1, 240),
-      p_alt_ro: requiredText(formData, "alt_ro", 1, 240),
+      p_alt_ru: requiredText(formData, "alt_ru", 1, altTextLimit),
+      p_alt_ro: requiredText(formData, "alt_ro", 1, altTextLimit),
       p_sort_order: integerValue(formData.get("sort_order"), "sort_order"),
       p_is_primary: checkboxValue(formData, "is_primary"),
     });
@@ -727,8 +788,8 @@ export async function saveSiteSettingAction(
     const key = requiredText(formData, "key", 1, 80);
     await callAdminRpc("admin_set_public_site_setting_pair", {
       p_key: key,
-      p_ru: requiredText(formData, "ru", 1, 1000),
-      p_ro: requiredText(formData, "ro", 1, 1000),
+      p_ru: requiredText(formData, "ru", 1, siteSettingValueLimit),
+      p_ro: requiredText(formData, "ro", 1, siteSettingValueLimit),
     });
     revalidateCatalogAfterMutation("settings");
     revalidatePath("/admin/settings");
@@ -751,8 +812,18 @@ export async function saveAssistantKnowledgeAction(
     const result = await callAdminRpc("admin_save_assistant_knowledge", {
       p_id: id,
       p_locale: localeValue(formData, "locale"),
-      p_title: requiredText(formData, "title", 1, 160),
-      p_content: requiredText(formData, "content", 1, 5000),
+      p_title: requiredText(
+        formData,
+        "title",
+        1,
+        assistantKnowledgeLimits.title,
+      ),
+      p_content: requiredText(
+        formData,
+        "content",
+        1,
+        assistantKnowledgeLimits.content,
+      ),
       p_is_active: checkboxValue(formData, "is_active"),
     });
     target = `/admin/assistant-knowledge/${String(result.data)}`;

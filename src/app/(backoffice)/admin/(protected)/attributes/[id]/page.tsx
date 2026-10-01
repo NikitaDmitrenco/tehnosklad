@@ -21,6 +21,7 @@ import {
   listAdminCategories,
 } from "@/features/admin/repository";
 import { isUuid } from "@/features/admin/validation";
+import { attributeLimits } from "@/lib/limits";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,7 @@ function OptionForm({
         <input
           className="field"
           defaultValue={option?.code}
+          maxLength={attributeLimits.optionCode}
           name="code"
           pattern="[a-z][a-z0-9_]*"
           required
@@ -71,7 +73,7 @@ function OptionForm({
         <input
           className="field"
           defaultValue={option?.labelRu ?? ""}
-          maxLength={160}
+          maxLength={attributeLimits.optionLabel}
           name="label_ru"
           required
         />
@@ -81,7 +83,7 @@ function OptionForm({
         <input
           className="field"
           defaultValue={option?.labelRo ?? ""}
-          maxLength={160}
+          maxLength={attributeLimits.optionLabel}
           name="label_ro"
           required
         />

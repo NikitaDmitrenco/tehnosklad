@@ -1,15 +1,25 @@
 import { randomUUID } from "node:crypto";
 
+import { AdminDataError, type AdminErrorParams } from "@/features/admin/errors";
 import type { AdminAttributeDataType } from "@/features/admin/types";
+import { codeLimit, imageLimits, productLimits } from "@/lib/limits";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const codePattern = /^[a-z][a-z0-9_]*$/;
 
-export class AdminValidationError extends Error {
-  constructor(public readonly field = "form") {
-    super("validation");
+// Extends AdminDataError so the redirect serializes the specific code (and
+// its limit/actual params) instead of collapsing everything into the generic
+// "validation" banner. `field` names the offending form control.
+export class AdminValidationError extends AdminDataError {
+  constructor(
+    public readonly field = "form",
+    code = "validation",
+    params: AdminErrorParams = {},
+  ) {
+    super(code, "validation", { field, ...params });
+    this.name = "AdminValidationError";
   }
 }
 
@@ -75,14 +85,18 @@ export function checkboxValue(formData: FormData, name: string): boolean {
   return formData.get(name) === "on";
 }
 
-export function slugValue(formData: FormData, name: string, max = 220) {
+export function slugValue(
+  formData: FormData,
+  name: string,
+  max: number = productLimits.slug,
+) {
   const value = requiredText(formData, name, 1, max);
   if (!slugPattern.test(value)) throw new AdminValidationError(name);
   return value;
 }
 
 export function codeValue(formData: FormData, name: string) {
-  const value = requiredText(formData, name, 1, 80);
+  const value = requiredText(formData, name, 1, codeLimit);
   if (!codePattern.test(value)) throw new AdminValidationError(name);
   return value;
 }
@@ -138,7 +152,7 @@ const allowedImages = {
 
 export async function validateProductImage(file: File) {
   const definition = allowedImages[file.type as keyof typeof allowedImages];
-  if (!definition || file.size < 12 || file.size > 5 * 1024 * 1024)
+  if (!definition || file.size < 12 || file.size > imageLimits.maxBytes)
     throw new AdminValidationError("image");
   const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
   const signatureMatches = definition.signatures.some((signature) =>
@@ -158,14 +172,14 @@ export async function validateProductImage(file: File) {
 export function createProductImagePath(productId: string, extension: string) {
   if (
     !uuidPattern.test(productId) ||
-    !["jpg", "png", "webp", "avif"].includes(extension)
+    !imageLimits.extensions.includes(extension)
   )
     throw new AdminValidationError("imagePath");
   return `${productId}/${randomUUID()}.${extension}`;
 }
 
 export function createCategoryImagePath(extension: string) {
-  if (!["jpg", "png", "webp", "avif"].includes(extension))
+  if (!imageLimits.extensions.includes(extension))
     throw new AdminValidationError("imagePath");
   return `categories/${randomUUID()}.${extension}`;
 }

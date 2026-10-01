@@ -3,6 +3,7 @@ import { SubmitButton } from "@/components/admin/submit-button";
 import { saveSiteSettingAction } from "@/features/admin/actions";
 import { requireAdmin } from "@/features/admin/auth/guard";
 import { listAdminSiteSettings } from "@/features/admin/repository";
+import { siteSettingValueLimit } from "@/lib/limits";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export default async function SettingsPage({
               <textarea
                 className="field min-h-20"
                 defaultValue={setting.ru}
-                maxLength={1000}
+                maxLength={siteSettingValueLimit}
                 name="ru"
                 required
               />
@@ -53,7 +54,7 @@ export default async function SettingsPage({
               <textarea
                 className="field min-h-20"
                 defaultValue={setting.ro}
-                maxLength={1000}
+                maxLength={siteSettingValueLimit}
                 name="ro"
                 required
               />

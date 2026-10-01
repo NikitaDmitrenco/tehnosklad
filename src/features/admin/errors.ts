@@ -1,7 +1,21 @@
+// Admin errors reach the page as `?error=<serialized>` on the redirect URL.
+// Serialization keeps codes short and carries safe display parameters
+// (limit, actual, field label, allowed list) so messages can state a concrete
+// cause without ever forwarding raw database text to the browser.
+
+export type AdminErrorParams = Partial<{
+  limit: string;
+  actual: string;
+  field: string;
+  allowed: string;
+  ref: string;
+}>;
+
 export class AdminDataError extends Error {
   constructor(
     public readonly code: string,
     message = "Admin operation failed",
+    public readonly params: AdminErrorParams = {},
   ) {
     super(message);
     this.name = "AdminDataError";
@@ -75,11 +89,20 @@ const knownMessages: Array<[string, string]> = [
 // through the redirect query, so the sanitizer and the UI read them from here
 // instead of each keeping its own copy -- a code missing from this map used to
 // reach the reader as a bare "Операция не выполнена.".
+// `{...}` placeholders are filled from AdminErrorParams on display.
 const codeMessages: Record<string, string> = {
   duplicate: "Такое значение уже используется.",
   in_use: "Сущность используется и не может быть удалена.",
   validation: "Проверьте обязательные поля и формат значений.",
-  upload_invalid: "Файл должен быть JPEG, PNG, WebP или AVIF размером до 5 МБ.",
+  upload_invalid: "Файл не принят: допустимы JPG, PNG, WebP или AVIF до 4 МБ.",
+  upload_too_large:
+    "Файл {actual}, максимум {limit}. Уменьшите фото или сохраните как JPG.",
+  upload_type_not_allowed:
+    "Недопустимый формат файла: {actual}. Разрешены {allowed}. Подсказка: на iPhone фото часто сохраняются в HEIC — конвертируйте их в JPG.",
+  upload_corrupted:
+    "Файл повреждён или обрезан и не открывается как изображение. Сохраните изображение заново и повторите загрузку.",
+  upload_extension_mismatch:
+    "Содержимое файла не соответствует его расширению. Сохраните изображение заново в том же формате и повторите загрузку.",
   operation_failed:
     "Операция не выполнена. Проверьте данные и повторите попытку.",
 };
@@ -101,20 +124,63 @@ export function sanitizeAdminError(error: unknown): AdminDataError {
     return new AdminDataError("duplicate", codeMessages.duplicate!);
   if (code === "23503")
     return new AdminDataError("in_use", codeMessages.in_use!);
-  return new AdminDataError("operation_failed", codeMessages.operation_failed!);
+  // Unexpected failure: the raw message stays in the server log, tied to a
+  // short reference the operator can quote from the UI.
+  const ref = Math.random().toString(36).slice(2, 8).toUpperCase();
+  console.error("Admin operation failed", {
+    ref,
+    pgCode: code,
+    message: raw.slice(0, 500),
+  });
+  return new AdminDataError(
+    "operation_failed",
+    codeMessages.operation_failed!,
+    {
+      ref,
+    },
+  );
 }
 
-export function adminErrorMessage(code: string | undefined): string | null {
-  if (!code) return null;
-  let decoded = code;
-  try {
-    decoded = decodeURIComponent(code);
-  } catch {
-    // A malformed query value is shown as the generic failure, not a crash.
-  }
-  return (
-    knownMessages.find(([needle]) => decoded === needle)?.[1] ??
-    codeMessages[decoded] ??
-    "Операция не выполнена."
+// "code" or "code~key=urlencodedValue~key=urlencodedValue". Codes never
+// contain "~" (they are map keys); values are encoded so any text is safe
+// inside the query string.
+export function serializeAdminError(error: AdminDataError): string {
+  const pairs = Object.entries(error.params).filter(
+    (entry): entry is [string, string] =>
+      typeof entry[1] === "string" && entry[1] !== "",
   );
+  if (!pairs.length) return error.code;
+  return [
+    error.code,
+    ...pairs.map(([key, value]) => `${key}=${encodeURIComponent(value)}`),
+  ].join("~");
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+export function adminErrorMessage(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const [code = "", ...pairParts] = safeDecode(raw).split("~");
+  const params: Record<string, string> = {};
+  for (const pair of pairParts) {
+    const separator = pair.indexOf("=");
+    if (separator <= 0) continue;
+    params[pair.slice(0, separator)] = safeDecode(pair.slice(separator + 1));
+  }
+  const template =
+    knownMessages.find(([needle]) => code === needle)?.[1] ??
+    codeMessages[code] ??
+    codeMessages.operation_failed!;
+  let message = template;
+  for (const [key, value] of Object.entries(params))
+    message = message.split(`{${key}}`).join(value);
+  if (params.ref && code === "operation_failed")
+    message += ` Код обращения: ${params.ref}.`;
+  return message;
 }

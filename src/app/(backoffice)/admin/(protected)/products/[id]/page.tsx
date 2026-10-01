@@ -25,6 +25,7 @@ import {
   listAdminCategories,
 } from "@/features/admin/repository";
 import { isUuid } from "@/features/admin/validation";
+import { altTextLimit } from "@/lib/limits";
 
 export const dynamic = "force-dynamic";
 
@@ -152,7 +153,7 @@ export default async function ProductPage({
         <div>
           <h2 className="text-xl font-black">Изображения</h2>
           <p className="mt-1 text-sm text-stone-600">
-            JPEG, PNG, WebP или AVIF до 5 МБ. Путь и bucket создаются только
+            JPEG, PNG, WebP или AVIF до 4 МБ. Путь и bucket создаются только
             сервером; overwrite отключён.
           </p>
         </div>
@@ -174,11 +175,21 @@ export default async function ProductPage({
           </label>
           <label className="field-label">
             Alt RU
-            <input className="field" maxLength={240} name="alt_ru" required />
+            <input
+              className="field"
+              maxLength={altTextLimit}
+              name="alt_ru"
+              required
+            />
           </label>
           <label className="field-label">
             Alt RO
-            <input className="field" maxLength={240} name="alt_ro" required />
+            <input
+              className="field"
+              maxLength={altTextLimit}
+              name="alt_ro"
+              required
+            />
           </label>
           <label className="field-label">
             Порядок
@@ -247,7 +258,7 @@ export default async function ProductPage({
                       <input
                         className="field"
                         defaultValue={image.altRu ?? ""}
-                        maxLength={240}
+                        maxLength={altTextLimit}
                         name="alt_ru"
                         required
                       />
@@ -257,7 +268,7 @@ export default async function ProductPage({
                       <input
                         className="field"
                         defaultValue={image.altRo ?? ""}
-                        maxLength={240}
+                        maxLength={altTextLimit}
                         name="alt_ro"
                         required
                       />
