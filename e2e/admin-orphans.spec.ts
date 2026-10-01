@@ -18,9 +18,12 @@ const CONFIRM_MISSING_OBJECT = "Удалить сломанную metadata-за�
 const CONFIRM_PENDING = "Сверить объект и завершить либо отменить удаление?";
 
 /** Upload a storage object without any product_images metadata row. */
-async function uploadOrphanObject(runId: string): Promise<string> {
+async function uploadOrphanObject(): Promise<string> {
   const supabase = getLocalAdminSupabase();
-  const key = `e2e-orphan-${runId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}/orphan.png`;
+  // Real orphans live under product folders: the scanner only descends into
+  // UUID root folders (repository.ts) and reconcileImageEntryAction accepts
+  // only `{uuid}/{uuid}.{ext}` paths — mirror that layout.
+  const key = `${randomUUID()}/${randomUUID()}.png`;
   const { error } = await supabase.storage
     .from("product-images")
     .upload(key, fs.readFileSync(IMAGE_FIXTURE), { contentType: "image/png" });
@@ -85,8 +88,8 @@ test.describe("ADM-ORPH: media orphans", () => {
     ).toBeVisible();
   });
 
-  test("ADM-ORPH-02: Clean orphan object", async ({ page, runId }) => {
-    const key = await uploadOrphanObject(runId);
+  test("ADM-ORPH-02: Clean orphan object", async ({ page }) => {
+    const key = await uploadOrphanObject();
     try {
       await page.goto("/admin/media/orphans");
       const card = orphanCard(page, key);
