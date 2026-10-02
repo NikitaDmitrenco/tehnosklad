@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 import { getE2EConfig } from "./helpers/env";
 import { cleanupRunArtifacts } from "./helpers/cleanup";
-import { createLeadDirect } from "./helpers/leads";
+import { createLeadDirect, setLeadDeliveryState } from "./helpers/leads";
 
 const { adminEmail } = getE2EConfig();
 
@@ -105,5 +105,38 @@ test.describe("ADM-DASH: dashboard", () => {
     const isEmpty = (await emptyText.count()) > 0;
     const leadCount = await leadLinks.count();
     expect(isEmpty || leadCount > 0).toBe(true);
+  });
+
+  // BUG-02: the "Ошибки Telegram" card must open the delivery filter and the
+  // card number must equal the number of rows in the filtered list.
+  test("ADM-DASH-05: Telegram errors card opens the delivery filter", async ({
+    page,
+    runId,
+  }) => {
+    const lead = await createLeadDirect(runId);
+    await setLeadDeliveryState(lead.id, "permanent_failure", {
+      lastErrorCode: "telegram_config_missing",
+    });
+
+    await page.goto("/admin");
+    const card = page
+      .getByRole("region", { name: "Статистика" })
+      .getByRole("link", { name: /Ошибки Telegram/ });
+    await expect(card).toBeVisible();
+    const cardValue = Number((await card.locator("strong").innerText()).trim());
+    expect(cardValue).toBeGreaterThanOrEqual(1);
+
+    await card.click();
+    await expect(page).toHaveURL(/\/admin\/leads\?delivery=errors$/);
+    // Filter applied in the select control.
+    await expect(page.locator('select[name="delivery"]')).toHaveValue("errors");
+    // The card number equals the number of lead cards in the list
+    // (admin-list-card excludes the "Экспорт CSV" link).
+    const leadCards = page.locator("a.admin-list-card");
+    await expect(leadCards.first()).toBeVisible();
+    expect(await leadCards.count()).toBe(cardValue);
+    await expect(page.locator(`a[href="/admin/leads/${lead.id}"]`)).toHaveCount(
+      1,
+    );
   });
 });

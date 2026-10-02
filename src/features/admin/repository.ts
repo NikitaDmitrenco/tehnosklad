@@ -429,7 +429,7 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
     supabase
       .from("lead_telegram_deliveries")
       .select("id", { count: "exact", head: true })
-      .in("state", ["permanent_failure", "manual_review"]),
+      .in("state", leadDeliveryErrorStates),
     supabase
       .from("assistant_knowledge")
       .select("id", { count: "exact", head: true })
@@ -459,6 +459,15 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
   };
 }
 
+// Delivery states that count as "Telegram errors" — one source for the
+// dashboard counter, its card link and the leads-list filter (BUG-02).
+export const leadDeliveryErrorStates = ["permanent_failure", "manual_review"];
+
+const deliveryFilterStates: Record<string, string[]> = {
+  errors: leadDeliveryErrorStates,
+  delivered: ["succeeded"],
+};
+
 type LeadFilters = {
   status?: string;
   source?: string;
@@ -467,6 +476,7 @@ type LeadFilters = {
   dateFrom?: string;
   dateTo?: string;
   query?: string;
+  delivery?: string;
   limit?: number;
 };
 
@@ -476,10 +486,18 @@ const leadSelect =
 export async function listAdminLeads(
   filters: LeadFilters = {},
 ): Promise<AdminLead[]> {
+  const deliveryStates = deliveryFilterStates[filters.delivery ?? ""];
+  // Inner join on the delivery embed: only leads whose outbox row matches.
+  const select = deliveryStates
+    ? leadSelect.replace(
+        "lead_telegram_deliveries(",
+        "lead_telegram_deliveries!inner(",
+      )
+    : leadSelect;
   const supabase = await context();
   let query = supabase
     .from("leads")
-    .select(leadSelect)
+    .select(select)
     .order("created_at", { ascending: false });
   if (filters.status) query = query.eq("status", filters.status);
   if (filters.source) query = query.eq("source", filters.source);
@@ -488,6 +506,8 @@ export async function listAdminLeads(
   if (filters.dateFrom) query = query.gte("created_at", filters.dateFrom);
   if (filters.dateTo)
     query = query.lte("created_at", `${filters.dateTo}T23:59:59.999Z`);
+  if (deliveryStates)
+    query = query.in("lead_telegram_deliveries.state", deliveryStates);
   const result = await query.limit(filters.limit ?? 100);
   if (result.error) fail("leads", result.error);
   let leads = (result.data ?? []).map((row) =>

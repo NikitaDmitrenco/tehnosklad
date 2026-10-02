@@ -159,3 +159,9 @@ ADM-CAT-24 (новый): снятие родителя с публикации �
 Падений нет.
 
 ADM-CAT-16 (без test.fail): до 70/160 предупреждения нет, выше 70/160 — «Поисковики могут обрезать, рекомендуется до 70/160 символов.», жёсткие 180/320 вводятся полностью — 3/3. ADM-KB-01 (общий компонент счётчика) — 3/3.
+
+## 2026-10-02 09:26 · npx playwright test e2e/{admin-dashboard,admin-leads}.spec.ts -g "ADM-DASH-03|ADM-DASH-05|ADM-LEAD-02|ADM-LEAD-03" --project=admin --headed --reporter=list --repeat-each=3 --workers=1 (точечный после задачи 6: фильтр доставки B2/BUG-02) · итог 13 passed / 0 failed
+
+Падений нет.
+
+ADM-DASH-05 (новый): карточка «Ошибки Telegram» ведёт на /admin/leads?delivery=errors, селект доставки применён, число на карточке равно числу строк списка (.admin-list-card), заявка с permanent_failure присутствует — 3/3. ADM-DASH-03, ADM-LEAD-02 (форма фильтров), ADM-LEAD-03 (CSV) — 3/3.

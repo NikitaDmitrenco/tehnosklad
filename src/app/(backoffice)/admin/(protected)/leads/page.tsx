@@ -28,6 +28,7 @@ export default async function LeadsPage({
       dateFrom: query.date_from,
       dateTo: query.date_to,
       query: query.q,
+      delivery: query.delivery,
     }),
     listAdminProducts(),
   ]);
@@ -103,6 +104,18 @@ export default async function LeadsPage({
             <option value="">Все</option>
             <option value="ru">RU</option>
             <option value="ro">RO</option>
+          </select>
+        </label>
+        <label className="field-label">
+          Доставка Telegram
+          <select
+            className="field"
+            defaultValue={query.delivery ?? ""}
+            name="delivery"
+          >
+            <option value="">Все</option>
+            <option value="errors">С ошибкой доставки</option>
+            <option value="delivered">Доставлено</option>
           </select>
         </label>
         <label className="field-label">

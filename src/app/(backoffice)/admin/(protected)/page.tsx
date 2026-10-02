@@ -19,7 +19,11 @@ export default async function AdminPage() {
     ["Нет в наличии", dashboard.productsOutOfStock, "/admin/products"],
     ["Категории", dashboard.categoriesTotal, "/admin/categories"],
     ["Новые заявки", dashboard.newLeads, "/admin/leads?status=new"],
-    ["Ошибки Telegram", dashboard.telegramErrors, "/admin/leads"],
+    [
+      "Ошибки Telegram",
+      dashboard.telegramErrors,
+      "/admin/leads?delivery=errors",
+    ],
     [
       "Статьи базы знаний",
       dashboard.knowledgeActive,
