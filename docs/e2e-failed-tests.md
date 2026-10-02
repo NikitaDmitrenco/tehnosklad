@@ -153,3 +153,9 @@ ADM-CAT-24 (новый): снятие родителя с публикации �
 ## 2026-10-02 08:35 · npx playwright test e2e/admin-categories.spec.ts -g "ADM-CAT-15|ADM-CAT-16|ADM-CAT-21|ADM-CAT-24" --project=admin --headed --reporter=list --repeat-each=3 --workers=1 (соседние тесты категорий после задач 3–4; ADM-CAT-16 снят с test.fail — maxLength 180/320 в коде с задачи 0) · итог 13 passed / 0 failed
 
 Падений нет. Все четыре теста 3/3.
+
+## 2026-10-02 09:06 · npx playwright test e2e/{admin-categories,admin-knowledge}.spec.ts -g "ADM-CAT-16|ADM-KB-01" --project=admin --headed --reporter=list --repeat-each=3 --workers=1 (точечный после задачи 5: SEO-счётчик B1/BUG-01) · итог 7 passed / 0 failed
+
+Падений нет.
+
+ADM-CAT-16 (без test.fail): до 70/160 предупреждения нет, выше 70/160 — «Поисковики могут обрезать, рекомендуется до 70/160 символов.», жёсткие 180/320 вводятся полностью — 3/3. ADM-KB-01 (общий компонент счётчика) — 3/3.

@@ -102,6 +102,7 @@ function TranslationFields({
           maxLength={limits.seoTitle}
           name={`${locale}_seo_title`}
           warningThreshold={seoLimits.title.recommended}
+          warningText={`Поисковики могут обрезать, рекомендуется до ${seoLimits.title.recommended} символов.`}
         />
       </label>
       <label className="field-label">
@@ -116,6 +117,7 @@ function TranslationFields({
           maxLength={limits.seoDescription}
           name={`${locale}_seo_description`}
           warningThreshold={seoLimits.description.recommended}
+          warningText={`Поисковики могут обрезать, рекомендуется до ${seoLimits.description.recommended} символов.`}
         />
       </label>
     </fieldset>

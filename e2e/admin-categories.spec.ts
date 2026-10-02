@@ -516,20 +516,40 @@ test.describe("ADM-CAT: categories", () => {
     ).toContainText("Архив");
   });
 
-  // fixed BUG-01 (maxLength wired to limits.ts in the foundation task):
-  // SEO inputs accept the documented 180/320.
-  test("ADM-CAT-16: SEO fields accept documented max 180/320 (BUG-01)", async ({
+  // fixed BUG-01: hard limit from limits.ts (180/320) + soft threshold
+  // (70/160) with an explanatory warning above it.
+  test("ADM-CAT-16: SEO fields accept 180/320 and warn past 70/160 (BUG-01)", async ({
     page,
   }) => {
     await page.goto("/admin/categories/new");
-    await page.locator('input[name="ru_seo_title"]').fill("т".repeat(180));
-    await page
-      .locator('textarea[name="ru_seo_description"]')
-      .fill("д".repeat(320));
-    // Single intended assertion last: full documented length must survive.
-    await expect(page.locator('input[name="ru_seo_title"]')).toHaveValue(
-      "т".repeat(180),
+    const title = page.locator('input[name="ru_seo_title"]');
+    const description = page.locator('textarea[name="ru_seo_description"]');
+    const titleWarning = page.getByText(
+      "Поисковики могут обрезать, рекомендуется до 70 символов.",
     );
+    const descriptionWarning = page.getByText(
+      "Поисковики могут обрезать, рекомендуется до 160 символов.",
+    );
+
+    // Up to the recommended length: no warning.
+    await title.fill("т".repeat(70));
+    await expect(titleWarning).toHaveCount(0);
+
+    // Above the recommended length: warning appears.
+    await title.fill("т".repeat(71));
+    await expect(titleWarning).toBeVisible();
+
+    // Hard limit: the full documented length survives (was truncated at 70).
+    await title.fill("т".repeat(180));
+    await expect(title).toHaveValue("т".repeat(180));
+
+    // Same thresholds for the description field (160 / 320).
+    await description.fill("д".repeat(160));
+    await expect(descriptionWarning).toHaveCount(0);
+    await description.fill("д".repeat(161));
+    await expect(descriptionWarning).toBeVisible();
+    await description.fill("д".repeat(320));
+    await expect(description).toHaveValue("д".repeat(320));
   });
 
   test("ADM-CAT-22: old public category URL redirects after slug change", async ({
