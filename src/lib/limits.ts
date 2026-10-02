@@ -101,6 +101,16 @@ const imageMimeTypes: readonly string[] = [
 ];
 const imageExtensions: readonly string[] = ["jpg", "png", "webp", "avif"];
 
+// Client-side image auto-compression (src/lib/image-compress.ts): the form
+// shrinks a heavy or over-resolution photo in the browser before submit.
+// Shared here so UI, module and tests read the same numbers.
+export const IMAGE_MAX_SIDE = 2000;
+export const IMAGE_TARGET_BYTES = 3.5 * 1024 * 1024;
+export const IMAGE_QUALITY_START = 0.85;
+export const IMAGE_QUALITY_MIN = 0.6;
+export const IMAGE_QUALITY_STEP = 0.1;
+export const IMAGE_COMPRESS_MAX_ATTEMPTS = 6;
+
 export const imageLimits = {
   // 4 MiB: deliberately below the Vercel request-body cap (4.5 MB, see
   // docs/diagnostics/report-2026-10-01.md §5) so the in-app check always
@@ -119,6 +129,10 @@ export const imageLimits = {
 
 // Shown next to every upload field before the user picks a file.
 export const imageUploadHint = `JPG, PNG, WebP или AVIF, до ${imageLimits.maxLabel}`;
+// Field hint after auto-compression was added: the browser shrinks heavy
+// photos itself, so the "shrink it in the gallery" tip no longer fits here
+// (imageShrinkTip stays for the server-side error pages).
+export const imageCompressHint = `JPG, PNG или WebP. Большие фото уменьшатся автоматически (до ${imageLimits.maxLabel})`;
 export const imageShrinkTip =
   "Фото слишком большое? Уменьшите его в галерее («Изменить размер») или сохраните как JPG.";
 
