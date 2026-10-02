@@ -31,7 +31,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhY
 CATALOG_DATA_SOURCE=supabase
 
 # Учетные данные тестового администратора (настраиваются через переменные)
-E2E_ADMIN_EMAIL=admin.e2e@test.local
+E2E_ADMIN_EMAIL=admin.e2e@tehnosklad.local
 E2E_ADMIN_PASSWORD=E2E-Admin-Local-2026!Pass
 ```
 

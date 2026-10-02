@@ -51,10 +51,12 @@ export function getE2EConfig() {
     process.env.NEXT_PUBLIC_SITE_URL ||
     "http://localhost:3000";
 
+  // Same default as scripts/local-test/ensure-admin.mjs — the email the
+  // local script actually creates when E2E_ADMIN_EMAIL is not set.
   const adminEmail =
     process.env.E2E_ADMIN_EMAIL ||
     process.env.TEST_ADMIN_EMAIL ||
-    "admin.e2e@test.local";
+    "admin.e2e@tehnosklad.local";
   const adminPassword =
     process.env.E2E_ADMIN_PASSWORD ||
     process.env.TEST_ADMIN_PASSWORD ||

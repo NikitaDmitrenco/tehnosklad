@@ -171,3 +171,7 @@ ADM-DASH-05 (новый): карточка «Ошибки Telegram» ведёт 
 Падений нет.
 
 ADM-CAT-25 (новый): обрезанный PNG (валидный заголовок, нет IEND) → «Файл повреждён или обрезан и не открывается как изображение. Сохраните изображение заново и повторите загрузку.» (upload_corrupted) — 3/3. ADM-CAT-20/PROD-13 (валидные загрузки через полную структурную проверку) и ADM-CAT-21 (mismatch) — 3/3.
+
+## 2026-10-02 09:49 · npx playwright test e2e/admin-auth.spec.ts --project=admin --headed --reporter=list --workers=1 --repeat-each=3 (точечный после задачи 8: унификация дефолтов креденшелов) · итог 22 passed / 0 failed
+
+Падений нет. Логин/логаут и все ADM-AUTH-01..07 — 3/3 (дефолт e2e/helpers/env.ts теперь совпадает с ensure-admin.mjs: admin.e2e@tehnosklad.local).
