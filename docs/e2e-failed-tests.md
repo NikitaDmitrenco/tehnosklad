@@ -175,3 +175,7 @@ ADM-CAT-25 (новый): обрезанный PNG (валидный заголо
 ## 2026-10-02 09:49 · npx playwright test e2e/admin-auth.spec.ts --project=admin --headed --reporter=list --workers=1 --repeat-each=3 (точечный после задачи 8: унификация дефолтов креденшелов) · итог 22 passed / 0 failed
 
 Падений нет. Логин/логаут и все ADM-AUTH-01..07 — 3/3 (дефолт e2e/helpers/env.ts теперь совпадает с ensure-admin.mjs: admin.e2e@tehnosklad.local).
+
+## 2026-10-02 09:57 · npm run test:e2e:admin -- --headed --reporter=list (полный admin-сьют, финальный прогон раунда) · итог 91 passed / 0 failed
+
+Падений нет. Все тесты админки (включая исправленные ADM-LEAD-08/09/10, ADM-CAT-16, ADM-CAT-21, новые ADM-CAT-23/24/25, ADM-DASH-05) прошли с первого раза. Полный построчный вывод сохранялся во время прогона; в журнале фиксируется итог по протоколу.
