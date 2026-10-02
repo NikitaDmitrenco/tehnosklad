@@ -41,6 +41,19 @@ const knownMessages: Array<[string, string]> = [
     "Published category requires",
     "Для публикации категории нужны полные переводы RU и RO.",
   ],
+  // Both directions of the publication tree trigger (stage_6_admin_crud:54,61).
+  [
+    "Published child category requires a published parent",
+    "Нельзя опубликовать подкатегорию, пока родительская категория не опубликована. Сначала опубликуйте родительскую.",
+  ],
+  [
+    "Published child categories require an active parent",
+    "Нельзя снять категорию с публикации или архивировать её, пока есть опубликованные подкатегории. Сначала снимите с публикации подкатегории.",
+  ],
+  [
+    "Published products require a published category",
+    "Сначала опубликуйте выбранную категорию.",
+  ],
   [
     "Published product requires ru and ro",
     "Для публикации товара нужны полные переводы RU и RO.",
@@ -48,6 +61,42 @@ const knownMessages: Array<[string, string]> = [
   [
     "Published product requires a published category",
     "Сначала опубликуйте выбранную категорию.",
+  ],
+  [
+    "Published text attributes require ru and ro translations",
+    "Для публикации характеристики нужны полные переводы RU и RO.",
+  ],
+  [
+    "Options require a select attribute",
+    "Варианты поддерживаются только у характеристик типа «Список» или «Множественный выбор».",
+  ],
+  [
+    "attribute_options_not_supported",
+    "Варианты поддерживаются только у характеристик типа «Список» или «Множественный выбор».",
+  ],
+  [
+    "option_attribute_immutable",
+    "Вариант нельзя перенести к другой характеристике.",
+  ],
+  [
+    "invalid_translations",
+    "Переводы RU и RO заполнены некорректно — проверите оба языковых блока.",
+  ],
+  [
+    "invalid_attribute_values",
+    "Список значений характеристик некорректен или слишком длинный — очистите неиспользуемые значения.",
+  ],
+  [
+    "invalid_product_attribute",
+    "Характеристика не относится к категории товара или отключена — обновите страницу и проверьте список характеристик.",
+  ],
+  [
+    "product_image_not_pending",
+    "Изображение уже удалено или обрабатывается — обновите страницу.",
+  ],
+  [
+    "delivery_not_retryable",
+    "Повторная отправка недоступна: доставка уже завершена или не требует повтора.",
   ],
   [
     "missing a required attribute",
@@ -93,6 +142,8 @@ const knownMessages: Array<[string, string]> = [
 const codeMessages: Record<string, string> = {
   duplicate: "Такое значение уже используется.",
   in_use: "Сущность используется и не может быть удалена.",
+  not_found:
+    "Запись не найдена — возможно, её удалили в другой вкладке. Обновите страницу и повторите.",
   validation: "Проверьте обязательные поля и формат значений.",
   upload_invalid: "Файл не принят: допустимы JPG, PNG, WebP или AVIF до 4 МБ.",
   upload_too_large:
@@ -116,6 +167,10 @@ export function sanitizeAdminError(error: unknown): AdminDataError {
   for (const [needle, message] of knownMessages) {
     if (raw.includes(needle)) return new AdminDataError(needle, message);
   }
+  // The whole *_not_found family raised by the admin RPCs (category_not_found,
+  // product_image_not_found, …) shares one human explanation.
+  if (/^[a-z][a-z_]*_not_found$/.test(raw.trim()))
+    return new AdminDataError("not_found", codeMessages.not_found!);
   const code =
     typeof error === "object" && error !== null && "code" in error
       ? String(error.code)

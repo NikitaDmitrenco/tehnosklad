@@ -420,9 +420,69 @@ test.describe("ADM-CAT: categories", () => {
       .fill("Descriere completa copil.");
     await page.getByRole("button", { name: "Сохранить категорию" }).click();
 
-    await expectErrorNotice(page, "operation_failed", GENERIC_ERROR);
+    // BUG-04 fixed: the trigger message reaches the UI verbatim.
+    await expectErrorNotice(
+      page,
+      "Published child category requires a published parent",
+      "Нельзя опубликовать подкатегорию, пока родительская категория не опубликована. Сначала опубликуйте родительскую.",
+    );
     expect(await adminRead.getCategoryTranslation(child.slugRu)).toBeNull();
     expect(await adminRead.countSlugRoutesBySlug(child.slugRu)).toBe(0);
+  });
+
+  // BUG-04 reverse direction: a parent cannot be unpublished (or archived)
+  // while published children exist.
+  test("ADM-CAT-24: unpublishing parent with published child rejected", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const parent = factories.buildCategoryData(runId, {
+      nameRu: `Родитель-24 ${runId}`,
+      nameRo: `Parinte-24 ${runId}`,
+      isPublished: true,
+    });
+    const parentId = await factories.createCategoryViaUI(page, parent);
+
+    // Published child under the published parent.
+    await page.goto("/admin/categories/new");
+    await page.locator('select[name="parent_id"]').selectOption(parentId);
+    await page.locator('input[name="is_published"]').check();
+    await page.locator('input[name="ru_name"]').fill(`Дитя-24 ${runId}`);
+    await page
+      .locator('input[name="ru_slug"]')
+      .fill(formatRunSlug("cat-child24", runId, "ru"));
+    await page
+      .locator('textarea[name="ru_short_description"]')
+      .fill(`Краткое ${runId}`);
+    await page
+      .locator('textarea[name="ru_description"]')
+      .fill("Полное описание дитяти-24.");
+    await page.locator('input[name="ro_name"]').fill(`Copil-24 ${runId}`);
+    await page
+      .locator('input[name="ro_slug"]')
+      .fill(formatRunSlug("cat-child24", runId, "ro"));
+    await page
+      .locator('textarea[name="ro_short_description"]')
+      .fill(`Scurt ${runId}`);
+    await page
+      .locator('textarea[name="ro_description"]')
+      .fill("Descriere completa copil-24.");
+    await page.getByRole("button", { name: "Сохранить категорию" }).click();
+    await expectSaved(page);
+
+    // Unpublish the parent — must be rejected with the concrete reason.
+    await page.goto(`/admin/categories/${parentId}`);
+    await page.locator('input[name="is_published"]').uncheck();
+    await page.getByRole("button", { name: "Сохранить категорию" }).click();
+    await expectErrorNotice(
+      page,
+      "Published child categories require an active parent",
+      "Нельзя снять категорию с публикации или архивировать её, пока есть опубликованные подкатегории. Сначала снимите с публикации подкатегории.",
+    );
+    // The parent stays published in the database.
+    const parentRow = await adminRead.getCategoryById(parentId);
+    expect(parentRow?.is_published).toBe(true);
   });
 
   test("ADM-CAT-03: Archived badge appears after archive", async ({

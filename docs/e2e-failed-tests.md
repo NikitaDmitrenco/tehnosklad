@@ -127,3 +127,15 @@ ADM-LEAD-08/09/10 после снятия test.fail проходят 3/3 как 
 Падений нет.
 
 ADM-CAT-21 после снятия test.fail проверяет конкретный текст «Содержимое файла не соответствует его расширению…» (`upload_extension_mismatch`) и проходит 3/3. ADM-CAT-23 (новый): oversize-файл блокируется в браузере текстом с фактическим размером и лимитом, кнопка disabled, навигации нет, страница жива — 3/3. ADM-CAT-20/PROD-13 (валидные загрузки) — 3/3.
+
+## 2026-10-02 08:13 · npx playwright test e2e/admin-categories.spec.ts -g "ADM-CAT-15" --project=admin --headed --reporter=list --repeat-each=3 --workers=1 (точечный после задачи 3: B3/BUG-04) · итог 4 passed / 0 failed
+
+Падений нет.
+
+ADM-CAT-15 теперь проверяет конкретный текст ошибки триггера «Нельзя опубликовать подкатегорию, пока родительская категория не опубликована. Сначала опубликуйте родительскую.» (код `Published child category requires a published parent`) — 3/3.
+
+## 2026-10-02 08:14 · npx playwright test e2e/admin-categories.spec.ts -g "ADM-CAT-24" --project=admin --headed --reporter=list --repeat-each=3 --workers=1 (обратный сценарий B3) · итог 4 passed / 0 failed
+
+Падений нет.
+
+ADM-CAT-24 (новый): снятие родителя с публикации при опубликованной подкатегории → «Нельзя снять категорию с публикации или архивировать её, пока есть опубликованные подкатегории. Сначала снимите с публикации подкатегории.» (код `Published child categories require an active parent`), родитель остаётся опубликованным в БД — 3/3.
