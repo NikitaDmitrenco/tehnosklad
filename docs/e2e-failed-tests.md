@@ -139,3 +139,17 @@ ADM-CAT-15 теперь проверяет конкретный текст ош�
 Падений нет.
 
 ADM-CAT-24 (новый): снятие родителя с публикации при опубликованной подкатегории → «Нельзя снять категорию с публикации или архивировать её, пока есть опубликованные подкатегории. Сначала снимите с публикации подкатегории.» (код `Published child categories require an active parent`), родитель остаётся опубликованным в БД — 3/3.
+
+## 2026-10-02 08:24 · npx playwright test e2e/admin-categories.spec.ts -g "ADM-CAT-10" --project=admin --headed --reporter=list --repeat-each=3 --workers=1 (первый прогон после задачи 4) · итог 4 passed / 3 failed
+
+| ADM-ID | Заголовок теста | Что проверял (1 строка) | Классификация | Краткий текст ошибки |
+|--------|-----------------|-------------------------|---------------|----------------------|
+| ADM-CAT-10 | text limits — save at limits.ts boundary, above clamped | на границе 160/180/280 и выше лимита | баг теста (исправлен тем же коммитом) | `[adminRead] category slug cat-s181-…: JSON object requested, multiple (or no) rows returned` — RO-slug ${slugRu}-ro после клампа до 180 совпал с RU-slug; uniqueness в БД per-locale, нашёлся 2 строки и maybeSingle упал. Продукт не при чём: шаги name/short (кламп до 160/280, сохранение на границе без 23514) прошли. |
+
+## 08:39 · повтор ADM-CAT-10 после правки (RO-slug раздельный, ожидания из limits.ts) · итог 7 passed / 0 failed
+
+Падений нет. 3/3 по обоим тестам ADM-CAT-10: на границе сохранение без ошибок, выше лимита браузер обрезает ровно до limit, в БД длина равна лимиту.
+
+## 2026-10-02 08:35 · npx playwright test e2e/admin-categories.spec.ts -g "ADM-CAT-15|ADM-CAT-16|ADM-CAT-21|ADM-CAT-24" --project=admin --headed --reporter=list --repeat-each=3 --workers=1 (соседние тесты категорий после задач 3–4; ADM-CAT-16 снят с test.fail — maxLength 180/320 в коде с задачи 0) · итог 13 passed / 0 failed
+
+Падений нет. Все четыре теста 3/3.

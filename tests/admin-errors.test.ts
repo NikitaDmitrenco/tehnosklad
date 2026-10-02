@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { adminErrorMessage, sanitizeAdminError } from "@/features/admin/errors";
+import {
+  adminErrorMessage,
+  sanitizeAdminError,
+  serializeAdminError,
+} from "@/features/admin/errors";
 
 describe("admin error sanitization", () => {
   it("maps known integrity errors to a safe message", () => {
@@ -91,6 +95,43 @@ describe("admin error sanitization", () => {
     });
     expect(adminErrorMessage(error.code)).toBe(
       "Статья базы знаний не найдена.",
+    );
+  });
+
+  // DOC-03 safety net: a CHECK violation that slipped past the client and
+  // server validators still names the field and the limit.
+  it("maps a CHECK violation to the field name and its limit", () => {
+    const error = sanitizeAdminError({
+      code: "23514",
+      message:
+        'new row for relation "category_translations" violates check constraint "category_translations_name_check"',
+    });
+    expect(error.code).toBe("field_too_long");
+    expect(adminErrorMessage(serializeAdminError(error))).toBe(
+      "Поле «Название»: максимум 160 символов.",
+    );
+  });
+
+  it("falls back to a generic check message for unknown constraints", () => {
+    const error = sanitizeAdminError({
+      code: "23514",
+      message:
+        'new row for relation "products" violates check constraint "products_check"',
+    });
+    expect(error.code).toBe("check_failed");
+    expect(adminErrorMessage(serializeAdminError(error))).toBe(
+      "Значение не проходит проверку данных — сократите введённый текст и повторите.",
+    );
+  });
+
+  it("still explains the parent-cycle 23514 through its message", () => {
+    const error = sanitizeAdminError({
+      code: "23514",
+      message: "category_parent_cycle",
+    });
+    expect(error.code).toBe("category_parent_cycle");
+    expect(adminErrorMessage(error.code)).toBe(
+      "Категория не может быть собственным потомком.",
     );
   });
 });

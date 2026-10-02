@@ -10,7 +10,9 @@ export const adminRead = {
     const supabase = getLocalAdminSupabase();
     const { data, error } = await supabase
       .from("category_translations")
-      .select("category_id, name, slug, locale, category:categories(*)")
+      .select(
+        "category_id, name, slug, short_description, locale, category:categories(*)",
+      )
       .eq("slug", slug)
       .maybeSingle();
     if (error)

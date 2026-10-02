@@ -9,6 +9,7 @@ import {
   expectSaved,
 } from "./helpers/admin-ui";
 import { formatRunSlug } from "./fixtures/run-id";
+import { categoryLimits } from "../src/lib/limits";
 
 const VALID_IMAGE = path.resolve(
   process.cwd(),
@@ -25,8 +26,6 @@ const OVERSIZE_IMAGE = path.resolve(
 
 const SEED_CATEGORY_ID = "10000000-0000-4000-8000-000000000001";
 
-const GENERIC_ERROR =
-  "Операция не выполнена. Проверьте данные и повторите попытку.";
 const DUPLICATE_ERROR = "Такой slug, код или SKU уже используется.";
 const CATEGORY_IN_USE_ERROR =
   "Категория используется товарами или подкатегориями.";
@@ -123,11 +122,12 @@ test.describe("ADM-CAT: categories", () => {
     );
   });
 
-  // DOC-03: UI/server limits (240/220/500) vs DB CHECK (160/180/280).
-  // Values above the DB limit fail with generic operation_failed and leave no
-  // partial rows. Asserted as observed — no test.fail() until the owner picks
-  // the intended limit.
-  test("ADM-CAT-10: text limits — 160/180/280 save, above fails atomically", async ({
+  // DOC-03 fixed: UI, server and DB share limits.ts (160/180/280 for
+  // categories). Over-limit input is clamped by the browser's maxLength to
+  // exactly the limit, so the row saves at the boundary. The DB-side 23514
+  // safety net ("Поле «X»: максимум N символов") is covered by
+  // tests/admin-errors.test.ts. Lengths below come from src/lib/limits.ts.
+  test("ADM-CAT-10: text limits — save at limits.ts boundary, above clamped", async ({
     page,
     runId,
   }) => {
@@ -137,48 +137,57 @@ test.describe("ADM-CAT: categories", () => {
     // 1. At-limit values (DB CHECK boundaries) in one draft -> saved.
     const atLimitSlug = formatRunSlug("cat-limit", runId, "ru");
     await fillAndSubmitCategoryForm(page, {
-      nameRu: "н".repeat(160),
+      nameRu: "н".repeat(categoryLimits.name),
       slugRu: atLimitSlug,
-      shortRu: "к".repeat(280),
+      shortRu: "к".repeat(categoryLimits.shortDescription),
       nameRo: `RO ${suffix}`,
       slugRo: formatRunSlug("cat-limit", runId, "ro"),
-      shortRo: "r".repeat(280),
+      shortRo: "r".repeat(categoryLimits.shortDescription),
     });
     await expectSaved(page);
     expect(await adminRead.getCategoryTranslation(atLimitSlug)).toBeTruthy();
 
-    // 2. One field at a time just above the DB limit (and at the UI max):
-    //    each must fail generically and leave zero rows.
-    const overLimitCases: CategoryFormValues[] = [
-      formValues(runId, {
-        nameRu: "н".repeat(161),
-        slugRu: `cat-n161-${suffix}`,
-      }),
-      formValues(runId, {
-        slugRu: `cat-s181-${suffix}`.padEnd(181, "a").slice(0, 181),
-      }),
-      formValues(runId, {
-        slugRu: `cat-sh281-${suffix}`,
-        shortRu: "к".repeat(281),
-      }),
-      formValues(runId, {
-        nameRu: "н".repeat(240),
-        slugRu: `cat-n240-${suffix}`,
-      }),
-      formValues(runId, {
-        slugRu: `cat-s220-${suffix}`.padEnd(220, "a").slice(0, 220),
-      }),
-      formValues(runId, {
-        slugRu: `cat-sh500-${suffix}`,
-        shortRu: "к".repeat(500),
-      }),
-    ];
+    // 2. Name above the limit (limit+1 and the old UI cap 240): browser
+    //    clamps to the limit, the row stores exactly the limit.
+    for (const length of [categoryLimits.name + 1, 240]) {
+      const slugRu = `cat-n${length}-${suffix}`;
+      await fillAndSubmitCategoryForm(page, {
+        ...formValues(runId, { nameRu: "н".repeat(length), slugRu }),
+        slugRo: `cat-n${length}-ro-${suffix}`,
+      });
+      await expectSaved(page);
+      const row = await adminRead.getCategoryTranslation(slugRu);
+      expect(row?.name).toHaveLength(categoryLimits.name);
+    }
 
-    for (const values of overLimitCases) {
-      await fillAndSubmitCategoryForm(page, values);
-      await expectErrorNotice(page, "operation_failed", GENERIC_ERROR);
-      expect(await adminRead.getCategoryTranslation(values.slugRu)).toBeNull();
-      expect(await adminRead.countSlugRoutesBySlug(values.slugRu)).toBe(0);
+    // 3. Short description above the limit (limit+1 and the old UI cap 500).
+    for (const length of [categoryLimits.shortDescription + 1, 500]) {
+      const slugRu = `cat-sh${length}-${suffix}`;
+      await fillAndSubmitCategoryForm(page, {
+        ...formValues(runId, { shortRu: "к".repeat(length), slugRu }),
+        slugRo: `cat-sh${length}-ro-${suffix}`,
+      });
+      await expectSaved(page);
+      const row = await adminRead.getCategoryTranslation(slugRu);
+      expect(row?.short_description).toHaveLength(
+        categoryLimits.shortDescription,
+      );
+    }
+
+    // 4. Slug above the limit (limit+1 and the old UI cap 220): clamped to
+    //    the limit. The RO slug must stay distinct after the same clamping,
+    //    otherwise RU and RO collapse to one string (uniqueness is per
+    //    locale, so both rows would legally exist and break the lookup).
+    for (const length of [categoryLimits.slug + 1, 220]) {
+      const fullSlug = `cat-s${length}-${suffix}`.padEnd(length, "a");
+      const storedSlug = fullSlug.slice(0, categoryLimits.slug);
+      await fillAndSubmitCategoryForm(page, {
+        ...formValues(runId, { slugRu: fullSlug }),
+        slugRo: `cat-s${length}-ro-${suffix}`,
+      });
+      await expectSaved(page);
+      const row = await adminRead.getCategoryTranslation(storedSlug);
+      expect(row?.slug).toHaveLength(categoryLimits.slug);
     }
   });
 
@@ -507,14 +516,11 @@ test.describe("ADM-CAT: categories", () => {
     ).toContainText("Архив");
   });
 
-  // known bug BUG-01: UI SEO maxLength 70/160 vs doc/server max 180/320
+  // fixed BUG-01 (maxLength wired to limits.ts in the foundation task):
+  // SEO inputs accept the documented 180/320.
   test("ADM-CAT-16: SEO fields accept documented max 180/320 (BUG-01)", async ({
     page,
   }) => {
-    test.fail(
-      true,
-      "BUG-01: SEO inputs truncate to 70/160 via HTML maxLength (admin guide §7.2 allows 180/320)",
-    );
     await page.goto("/admin/categories/new");
     await page.locator('input[name="ru_seo_title"]').fill("т".repeat(180));
     await page

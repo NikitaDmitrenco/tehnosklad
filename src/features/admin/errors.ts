@@ -3,6 +3,17 @@
 // (limit, actual, field label, allowed list) so messages can state a concrete
 // cause without ever forwarding raw database text to the browser.
 
+import {
+  altTextLimit,
+  assistantKnowledgeLimits,
+  attributeGroupLimits,
+  attributeLimits,
+  categoryLimits,
+  productLimits,
+  seoLimits,
+  siteSettingValueLimit,
+} from "@/lib/limits";
+
 export type AdminErrorParams = Partial<{
   limit: string;
   actual: string;
@@ -145,6 +156,9 @@ const codeMessages: Record<string, string> = {
   not_found:
     "Запись не найдена — возможно, её удалили в другой вкладке. Обновите страницу и повторите.",
   validation: "Проверьте обязательные поля и формат значений.",
+  check_failed:
+    "Значение не проходит проверку данных — сократите введённый текст и повторите.",
+  field_too_long: "Поле «{field}»: максимум {limit} символов.",
   upload_invalid: "Файл не принят: допустимы JPG, PNG, WebP или AVIF до 4 МБ.",
   upload_too_large:
     "Файл {actual}, максимум {limit}. Уменьшите фото или сохраните как JPG.",
@@ -157,6 +171,105 @@ const codeMessages: Record<string, string> = {
   operation_failed:
     "Операция не выполнена. Проверьте данные и повторите попытку.",
 };
+
+// Fallback for PG CHECK violations (23514): names come from the database
+// (verified against pg_constraint) so a value that slipped past the UI and
+// server validators still gets "which field, which limit" instead of the
+// generic operation_failed.
+const checkConstraintFields: Record<string, { label: string; limit: number }> =
+  {
+    category_translations_name_check: {
+      label: "Название",
+      limit: categoryLimits.name,
+    },
+    category_translations_slug_check: {
+      label: "Slug",
+      limit: categoryLimits.slug,
+    },
+    category_translations_short_description_check: {
+      label: "Краткое описание",
+      limit: categoryLimits.shortDescription,
+    },
+    category_translations_description_check: {
+      label: "Полное описание",
+      limit: categoryLimits.description,
+    },
+    category_translations_seo_title_check: {
+      label: "SEO title",
+      limit: seoLimits.title.max,
+    },
+    category_translations_seo_description_check: {
+      label: "SEO description",
+      limit: seoLimits.description.max,
+    },
+    product_translations_name_check: {
+      label: "Название",
+      limit: productLimits.name,
+    },
+    product_translations_slug_check: {
+      label: "Slug",
+      limit: productLimits.slug,
+    },
+    product_translations_short_description_check: {
+      label: "Краткое описание",
+      limit: productLimits.shortDescription,
+    },
+    product_translations_description_check: {
+      label: "Полное описание",
+      limit: productLimits.description,
+    },
+    product_translations_seo_title_check: {
+      label: "SEO title",
+      limit: seoLimits.title.max,
+    },
+    product_translations_seo_description_check: {
+      label: "SEO description",
+      limit: seoLimits.description.max,
+    },
+    products_brand_check: { label: "Бренд", limit: productLimits.brand },
+    products_model_check: { label: "Модель", limit: productLimits.model },
+    products_sku_check: { label: "SKU", limit: productLimits.sku },
+    product_image_translations_alt_text_check: {
+      label: "Alt",
+      limit: altTextLimit,
+    },
+    attribute_translations_name_check: {
+      label: "Название",
+      limit: attributeLimits.name,
+    },
+    attribute_translations_help_text_check: {
+      label: "Подсказка",
+      limit: attributeLimits.helpText,
+    },
+    attribute_translations_unit_label_check: {
+      label: "Обозначение единицы",
+      limit: attributeLimits.unitLabel,
+    },
+    attribute_group_translations_name_check: {
+      label: "Название",
+      limit: attributeGroupLimits.name,
+    },
+    attribute_option_translations_label_check: {
+      label: "Label",
+      limit: attributeLimits.optionLabel,
+    },
+    product_attribute_value_translations_text_value_check: {
+      label: "Значение характеристики",
+      limit: attributeLimits.textValue,
+    },
+    site_settings_value_check: {
+      label: "Значение настройки",
+      limit: siteSettingValueLimit,
+    },
+    assistant_knowledge_title_check: {
+      label: "Заголовок",
+      limit: assistantKnowledgeLimits.title,
+    },
+    assistant_knowledge_content_check: {
+      label: "Текст ответа",
+      limit: assistantKnowledgeLimits.content,
+    },
+  };
 
 export function sanitizeAdminError(error: unknown): AdminDataError {
   if (error instanceof AdminDataError) return error;
@@ -179,6 +292,20 @@ export function sanitizeAdminError(error: unknown): AdminDataError {
     return new AdminDataError("duplicate", codeMessages.duplicate!);
   if (code === "23503")
     return new AdminDataError("in_use", codeMessages.in_use!);
+  if (code === "23514") {
+    const constraint = raw.match(/check constraint "([^"]+)"/)?.[1] ?? "";
+    const field = checkConstraintFields[constraint];
+    if (field)
+      return new AdminDataError(
+        "field_too_long",
+        codeMessages.field_too_long!,
+        {
+          field: field.label,
+          limit: String(field.limit),
+        },
+      );
+    return new AdminDataError("check_failed", codeMessages.check_failed!);
+  }
   // Unexpected failure: the raw message stays in the server log, tied to a
   // short reference the operator can quote from the UI.
   const ref = Math.random().toString(36).slice(2, 8).toUpperCase();
