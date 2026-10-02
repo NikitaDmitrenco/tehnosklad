@@ -1,5 +1,6 @@
 import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
+import { statSync } from "node:fs";
 import path from "node:path";
 import { cleanupRunArtifacts } from "./helpers/cleanup";
 import { adminRead } from "./helpers/admin-read";
@@ -9,7 +10,18 @@ import {
   expectSaved,
 } from "./helpers/admin-ui";
 import { formatRunSlug } from "./fixtures/run-id";
-import { categoryLimits } from "../src/lib/limits";
+import {
+  categoryLimits,
+  imageLimits,
+  IMAGE_TARGET_BYTES,
+} from "../src/lib/limits";
+import {
+  gateClientChunks,
+  injectGeneratedImage,
+  oversizedAnimatedGif,
+  waitForImageFormReady,
+  waitForImageProcessed,
+} from "./helpers/image-gen";
 
 const VALID_IMAGE = path.resolve(
   process.cwd(),
@@ -588,7 +600,12 @@ test.describe("ADM-CAT: categories", () => {
     const categoryId = await factories.createCategoryViaUI(page, data);
 
     await page.goto(`/admin/categories/${categoryId}`);
+    await waitForImageFormReady(page, 'input[name="image"]');
     await page.locator('input[name="image"]').setInputFiles(VALID_IMAGE);
+    // CONTRACT ADDITION (image auto-compress): the selection is processed
+    // asynchronously (decode → maybe resize); wait for the busy marker to
+    // clear before submitting instead of racing the handler.
+    await waitForImageProcessed(page, 'input[name="image"]');
     await page.getByRole("button", { name: "Загрузить изображение" }).click();
     await expectSaved(page);
 
@@ -612,8 +629,13 @@ test.describe("ADM-CAT: categories", () => {
     );
   });
 
-  // fixed BUG-06: upload_* codes reach the UI with a concrete cause.
-  test("ADM-CAT-21: Invalid image content → extension mismatch (BUG-06)", async ({
+  // CONTRACT CHANGE (image auto-compress): the form now DECODES the file on
+  // selection (createImageBitmap). Bytes that are not an image fail the
+  // decode, so the browser blocks the upload before submit — the server's
+  // upload_extension_mismatch redirect (the old BUG-06 flow) is unreachable
+  // for this fixture. The visible text is the compression module's decode
+  // reason; the file still never leaves the browser.
+  test("ADM-CAT-21: Invalid image content → blocked in browser, no submit", async ({
     page,
     runId,
     factories,
@@ -622,14 +644,22 @@ test.describe("ADM-CAT: categories", () => {
     const categoryId = await factories.createCategoryViaUI(page, data);
 
     await page.goto(`/admin/categories/${categoryId}`);
+    await waitForImageFormReady(page, 'input[name="image"]');
     await page.locator('input[name="image"]').setInputFiles(INVALID_IMAGE);
-    await page.getByRole("button", { name: "Загрузить изображение" }).click();
-    // Single intended assertion last (errors.ts upload_extension_mismatch).
-    await expectErrorNotice(
-      page,
-      "upload_extension_mismatch",
-      "Содержимое файла не соответствует его расширению. Сохраните изображение заново в том же формате и повторите загрузку.",
-    );
+    await waitForImageProcessed(page, 'input[name="image"]');
+
+    const error = page.getByRole("alert");
+    await expect(error).toContainText("Браузер не может открыть это фото");
+    await expect(error).toContainText("сохраните изображение заново");
+
+    // The form never submitted: no navigation flags, button locked, page alive.
+    const button = page.getByRole("button", { name: "Загрузить изображение" });
+    await expect(button).toBeDisabled();
+    expect(page.url()).not.toContain("saved=1");
+    expect(page.url()).not.toContain("error=");
+    await expect(
+      page.getByRole("heading", { name: "Изображение категории" }),
+    ).toBeVisible();
   });
 
   // BUG-06 client-side gate: the oversize file must never reach the server.
@@ -647,6 +677,7 @@ test.describe("ADM-CAT: categories", () => {
       page.getByText("до 4 МБ", { exact: false }).first(),
     ).toBeVisible();
 
+    await waitForImageFormReady(page, 'input[name="image"]');
     await page.locator('input[name="image"]').setInputFiles(OVERSIZE_IMAGE);
     // The error states the actual size, the limit and what to do.
     const error = page.getByRole("alert").filter({ hasText: "максимум 4 МБ" });
@@ -664,9 +695,12 @@ test.describe("ADM-CAT: categories", () => {
     ).toBeVisible();
   });
 
-  // Truncated PNG with a valid header must be rejected as a corrupted file
-  // (full structure check: chunks, CRC, IEND).
-  test("ADM-CAT-25: Truncated PNG → corrupted-file message", async ({
+  // CONTRACT CHANGE (image auto-compress): a truncated PNG no longer reaches
+  // the server — the browser decode fails on selection and the form blocks
+  // the submit with the decode reason. The old server-side upload_corrupted
+  // redirect (full structure check: chunks, CRC, IEND) stays as the last
+  // line of defence but is unreachable for this fixture.
+  test("ADM-CAT-25: Truncated PNG → blocked in browser, no submit", async ({
     page,
     runId,
     factories,
@@ -674,12 +708,439 @@ test.describe("ADM-CAT: categories", () => {
     const data = factories.buildCategoryData(runId);
     const categoryId = await factories.createCategoryViaUI(page, data);
     await page.goto(`/admin/categories/${categoryId}`);
+    await waitForImageFormReady(page, 'input[name="image"]');
     await page.locator('input[name="image"]').setInputFiles(TRUNCATED_PNG);
+    await waitForImageProcessed(page, 'input[name="image"]');
+
+    const error = page.getByRole("alert");
+    await expect(error).toContainText("Браузер не может открыть это фото");
+
+    const button = page.getByRole("button", { name: "Загрузить изображение" });
+    await expect(button).toBeDisabled();
+    expect(page.url()).not.toContain("saved=1");
+    expect(page.url()).not.toContain("error=");
+  });
+
+  // --- Image auto-compress: the browser shrinks heavy photos on selection ---
+
+  test("ADM-CAT-26: JPEG 4000×3000 >4 МБ compressed, notice shown, saved within limit", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+    await page.goto(`/admin/categories/${categoryId}`);
+
+    const original = await injectGeneratedImage(page, 'input[name="image"]', {
+      kind: "noiseJpeg",
+      name: "big-noise.jpg",
+      width: 4000,
+      height: 3000,
+      quality: 0.95,
+    });
+    expect(original.size).toBeGreaterThan(imageLimits.maxBytes);
+    await waitForImageProcessed(page, 'input[name="image"]');
+
+    await expect(
+      page.getByText(/Фото уменьшено: [\d.,]+ МБ → [\d.,]+ МБ \(2000×1500\)/),
+    ).toBeVisible();
+
+    const chosen = await page.locator('input[name="image"]').evaluate((el) => {
+      const file = (el as HTMLInputElement).files?.[0];
+      return file
+        ? { size: file.size, type: file.type, name: file.name }
+        : null;
+    });
+    expect(chosen?.type).toBe("image/jpeg");
+    expect(chosen?.name).toBe("big-noise.jpg");
+    expect(chosen!.size).toBeGreaterThan(1024);
+    expect(chosen!.size).toBeLessThanOrEqual(IMAGE_TARGET_BYTES);
+
     await page.getByRole("button", { name: "Загрузить изображение" }).click();
+    await expectSaved(page);
+
+    const dbRow = await adminRead.getCategoryById(categoryId);
+    const storagePath = dbRow?.image_storage_path as string;
+    expect(storagePath.startsWith("categories/")).toBe(true);
+    const fileName = storagePath.slice("categories/".length);
+    const objects = await adminRead.listStorageObjects(
+      "category-images",
+      "categories",
+    );
+    const stored = objects.find((object) => object.name === fileName);
+    expect(stored).toBeTruthy();
+    const storedSize = Number(stored?.metadata?.size ?? 0);
+    expect(storedSize).toBeGreaterThan(1024);
+    expect(storedSize).toBeLessThanOrEqual(imageLimits.maxBytes);
+  });
+
+  test("ADM-CAT-27: File within limits uploads as-is, no compression message", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+    await page.goto(`/admin/categories/${categoryId}`);
+
+    const fixtureBytes = statSync(VALID_IMAGE).size;
+    await waitForImageFormReady(page, 'input[name="image"]');
+    await page.locator('input[name="image"]').setInputFiles(VALID_IMAGE);
+    await waitForImageProcessed(page, 'input[name="image"]');
+
+    await expect(page.getByText("Фото уменьшено")).toHaveCount(0);
+    await expect(page.getByText("Уменьшаю фото…")).toHaveCount(0);
+    const chosen = await page.locator('input[name="image"]').evaluate((el) => {
+      const file = (el as HTMLInputElement).files?.[0];
+      return file ? { size: file.size, name: file.name } : null;
+    });
+    expect(chosen).toEqual({
+      size: fixtureBytes,
+      name: "category-cover-1600x900.jpg",
+    });
+
+    await page.getByRole("button", { name: "Загрузить изображение" }).click();
+    await expectSaved(page);
+    await expect(
+      page.locator('img[src*="category-images"]').first(),
+    ).toBeVisible();
+  });
+
+  test("ADM-CAT-28: PNG with transparency stays PNG, alpha preserved", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+    await page.goto(`/admin/categories/${categoryId}`);
+
+    const original = await injectGeneratedImage(page, 'input[name="image"]', {
+      kind: "alphaPng",
+      name: "alpha-shape.png",
+      width: 3000,
+      height: 2000,
+    });
+    await waitForImageProcessed(page, 'input[name="image"]');
+
+    await expect(
+      page.getByText(
+        /Фото уменьшено: [\d.,]+ [КМ]Б → [\d.,]+ [КМ]Б \(2000×1333\)/,
+      ),
+    ).toBeVisible();
+    const chosen = await page.locator('input[name="image"]').evaluate((el) => {
+      const file = (el as HTMLInputElement).files?.[0];
+      return file
+        ? { size: file.size, type: file.type, name: file.name }
+        : null;
+    });
+    expect(chosen?.type).toBe("image/png");
+    expect(chosen?.name).toBe("alpha-shape.png");
+    expect(chosen!.size).toBeLessThanOrEqual(IMAGE_TARGET_BYTES);
+
+    await page.getByRole("button", { name: "Загрузить изображение" }).click();
+    await expectSaved(page);
+
+    const dbRow = await adminRead.getCategoryById(categoryId);
+    const storagePath = dbRow?.image_storage_path as string;
+    const blob = await adminRead.downloadStorageObject(
+      "category-images",
+      storagePath,
+    );
+    const bytes = Buffer.from(await blob.arrayBuffer());
+    expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+    // Decode the STORED file and sample both halves: left stays transparent,
+    // right stays opaque — the alpha channel survived resize + re-encode.
+    const sample = await page.evaluate(async (base64) => {
+      const raw = atob(base64);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      const bitmap = await createImageBitmap(
+        new Blob([bytes], { type: "image/png" }),
+      );
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("no 2d context");
+      context.drawImage(bitmap, 0, 0);
+      const mid = Math.floor(canvas.height / 2);
+      const left = context.getImageData(10, mid, 1, 1).data;
+      const right = context.getImageData(canvas.width - 10, mid, 1, 1).data;
+      return {
+        width: bitmap.width,
+        height: bitmap.height,
+        leftAlpha: left[3],
+        rightAlpha: right[3],
+      };
+    }, bytes.toString("base64"));
+    expect(sample.width).toBe(2000);
+    expect(sample.height).toBe(1333);
+    expect(sample.leftAlpha).toBe(0);
+    expect(sample.rightAlpha).toBe(255);
+    expect(chosen!.size).toBeLessThan(original.size);
+  });
+
+  test("ADM-CAT-29: Huge resolution at small size shrinks to IMAGE_MAX_SIDE", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+    await page.goto(`/admin/categories/${categoryId}`);
+
+    const original = await injectGeneratedImage(page, 'input[name="image"]', {
+      kind: "gradientPng",
+      name: "wide.png",
+      width: 6000,
+      height: 4500,
+    });
+    await waitForImageProcessed(page, 'input[name="image"]');
+
+    await expect(
+      page.getByText(
+        /Фото уменьшено: [\d.,]+ [КМ]Б → [\d.,]+ [КМ]Б \(2000×1500\)/,
+      ),
+    ).toBeVisible();
+    const chosen = await page.locator('input[name="image"]').evaluate((el) => {
+      const file = (el as HTMLInputElement).files?.[0];
+      return file ? { size: file.size, name: file.name } : null;
+    });
+    expect(chosen!.size).toBeLessThan(original.size);
+    // Rule 7: opaque output is JPEG, so the extension follows the new type.
+    expect(chosen?.name).toBe("wide.jpg");
+    await expect(
+      page.getByRole("button", { name: "Загрузить изображение" }),
+    ).toBeEnabled();
+  });
+
+  test("ADM-CAT-30: Non-image file → clear error, form not submitted, input kept", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+    await page.goto(`/admin/categories/${categoryId}`);
+
+    // Typed data elsewhere on the page must survive the failed selection.
+    await page.locator('input[name="ru_name"]').fill("Ценность до ошибки");
+
+    await waitForImageFormReady(page, 'input[name="image"]');
+    await page.locator('input[name="image"]').setInputFiles({
+      name: "notes.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Это не изображение, а обычный текстовый файл."),
+    });
+    await waitForImageProcessed(page, 'input[name="image"]');
+
+    const error = page.getByRole("alert");
+    await expect(error).toContainText("Недопустимый формат файла: TXT");
+    await expect(error).toContainText("Разрешены JPG, PNG, WebP или AVIF");
+
+    const button = page.getByRole("button", { name: "Загрузить изображение" });
+    await expect(button).toBeDisabled();
+    expect(page.url()).not.toContain("saved=1");
+    expect(page.url()).not.toContain("error=");
+    await expect(
+      page.getByRole("heading", { name: "Изображение категории" }),
+    ).toBeVisible();
+    await expect(page.locator('input[name="ru_name"]')).toHaveValue(
+      "Ценность до ошибки",
+    );
+  });
+
+  test("ADM-CAT-31: Animated GIF above the limit → clear size error, no submit", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+    await page.goto(`/admin/categories/${categoryId}`);
+
+    const gif = oversizedAnimatedGif(Math.round(4.5 * 1024 * 1024));
+    await waitForImageFormReady(page, 'input[name="image"]');
+    await page.locator('input[name="image"]').setInputFiles({
+      name: "anim.gif",
+      mimeType: "image/gif",
+      buffer: gif,
+    });
+    await waitForImageProcessed(page, 'input[name="image"]');
+
+    // Pre-existing size error (size check runs first) states size, limit, fix.
+    const error = page.getByRole("alert");
+    await expect(error).toContainText("Файл 4,5 МБ");
+    await expect(error).toContainText("максимум 4 МБ");
+    await expect(error).toContainText("Уменьшите фото или сохраните как JPG");
+
+    const button = page.getByRole("button", { name: "Загрузить изображение" });
+    await expect(button).toBeDisabled();
+    expect(page.url()).not.toContain("saved=1");
+    expect(page.url()).not.toContain("error=");
+  });
+
+  test("ADM-CAT-32: EXIF orientation 6 respected — output is portrait 1333×2000", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+    await page.goto(`/admin/categories/${categoryId}`);
+
+    // Stored 3000×2000 landscape with orientation=6 (rotate 90° CW): the
+    // browser must decode it as 2000×3000 portrait and resize along that.
+    await injectGeneratedImage(page, 'input[name="image"]', {
+      kind: "exifJpeg",
+      name: "rotated.jpg",
+      width: 3000,
+      height: 2000,
+      quality: 0.8,
+      orientation: 6,
+    });
+    await waitForImageProcessed(page, 'input[name="image"]');
+
+    await expect(
+      page.getByText(
+        /Фото уменьшено: [\d.,]+ [КМ]Б → [\d.,]+ [КМ]Б \(1333×2000\)/,
+      ),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "Загрузить изображение" }).click();
+    await expectSaved(page);
+
+    const dbRow = await adminRead.getCategoryById(categoryId);
+    const storagePath = dbRow?.image_storage_path as string;
+    const blob = await adminRead.downloadStorageObject(
+      "category-images",
+      storagePath,
+    );
+    const bytes = Buffer.from(await blob.arrayBuffer());
+    // Parse the SOF0 frame header: coded dimensions of the stored JPEG.
+    let offset = 2;
+    let dims: { width: number; height: number } | null = null;
+    while (offset + 4 <= bytes.length) {
+      expect(bytes[offset]).toBe(0xff);
+      const marker = bytes[offset + 1];
+      if (marker === 0xc0 || marker === 0xc2) {
+        dims = {
+          height: bytes.readUInt16BE(offset + 5),
+          width: bytes.readUInt16BE(offset + 7),
+        };
+        break;
+      }
+      offset += 2 + bytes.readUInt16BE(offset + 2);
+    }
+    expect(dims).toEqual({ width: 1333, height: 2000 });
+  });
+
+  test("ADM-CAT-33: File selected before hydration is processed after mount", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+
+    const release = await gateClientChunks(page);
+    try {
+      // SSR HTML only — client scripts are held back (CSS is exempt so the
+      // parser may finish), the component is not mounted, no onChange exists.
+      await page.goto(`/admin/categories/${categoryId}`, {
+        waitUntil: "commit",
+      });
+      await page
+        .getByRole("heading", { name: "Изображение категории" })
+        .waitFor({ state: "visible" });
+      // The form must be fully parsed but NOT hydrated yet — otherwise the
+      // test would exercise nothing.
+      const input = page.locator('input[name="image"]');
+      await expect(input).toHaveCount(1);
+      await expect(input).not.toHaveAttribute("data-ready", "1");
+
+      // Dispatch the change with NO readiness wait: React's listener does not
+      // exist yet, so the event is lost for onChange; the mount effect must
+      // pick the same file up instead.
+      await injectGeneratedImage(
+        page,
+        'input[name="image"]',
+        {
+          kind: "gradientPng",
+          name: "early.png",
+          width: 3000,
+          height: 2000,
+        },
+        { waitForReady: false },
+      );
+      // Still pre-hydration: the marker proves neither onChange nor mount ran.
+      await expect(input).not.toHaveAttribute("data-ready", "1");
+      await expect(input).not.toHaveAttribute("data-compressing", "1");
+    } finally {
+      await release();
+    }
+
+    // Hydration mounts the component → data-ready → self-heal processes the
+    // pre-hydration file with the same messages a normal pick would show.
+    await waitForImageFormReady(page, 'input[name="image"]');
+    await waitForImageProcessed(page, 'input[name="image"]');
+    await expect(
+      page.getByText(
+        /Фото уменьшено: [\d.,]+ [КМ]Б → [\d.,]+ [КМ]Б \(2000×1333\)/,
+      ),
+    ).toBeVisible();
+    const chosen = await page.locator('input[name="image"]').evaluate((el) => {
+      const file = (el as HTMLInputElement).files?.[0];
+      return file ? { name: file.name, type: file.type } : null;
+    });
+    expect(chosen).toEqual({ name: "early.jpg", type: "image/jpeg" });
+  });
+
+  test("ADM-CAT-34: Submit before hydration with a heavy file → clear server size error", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+
+    const release = await gateClientChunks(page);
+    try {
+      await page.goto(`/admin/categories/${categoryId}`, {
+        waitUntil: "commit",
+      });
+      await page
+        .getByRole("heading", { name: "Изображение категории" })
+        .waitFor({ state: "visible" });
+      // Must be genuinely pre-hydration: no data-ready marker yet.
+      await expect(page.locator('input[name="image"]')).not.toHaveAttribute(
+        "data-ready",
+        "1",
+      );
+      // 4.2 MiB: over the 4 MiB app limit, under the 4.5 MB body cap, so the
+      // request reaches the server action. The bytes never matter — the size
+      // check runs first — which is why a padded buffer suffices here.
+      const heavy = oversizedAnimatedGif(Math.round(4.2 * 1024 * 1024));
+      await page.locator('input[name="image"]').setInputFiles({
+        name: "heavy.jpg",
+        mimeType: "image/jpeg",
+        buffer: heavy,
+      });
+      // Pre-hydration only React's inline PE script (inside the SSR HTML)
+      // can see this submit; it queues the FormData for the React runtime.
+      await page.getByRole("button", { name: "Загрузить изображение" }).click();
+    } finally {
+      await release();
+    }
+    // React boots, replays the queued FormData with the ORIGINAL heavy file:
+    // the server validator answers with the pre-existing size error text.
     await expectErrorNotice(
       page,
-      "upload_corrupted",
-      "Файл повреждён или обрезан и не открывается как изображение. Сохраните изображение заново и повторите загрузку.",
+      "upload_too_large",
+      "Файл 4,2 МБ, максимум 4 МБ. Уменьшите фото или сохраните как JPG.",
     );
   });
 });

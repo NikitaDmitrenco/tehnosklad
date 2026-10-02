@@ -5,6 +5,12 @@ import { cleanupRunArtifacts } from "./helpers/cleanup";
 import { adminRead } from "./helpers/admin-read";
 import { adminForm, expectErrorNotice, expectSaved } from "./helpers/admin-ui";
 import {
+  injectGeneratedImage,
+  waitForImageFormReady,
+  waitForImageProcessed,
+} from "./helpers/image-gen";
+import { imageLimits, IMAGE_TARGET_BYTES } from "../src/lib/limits";
+import {
   createProductViaUI,
   fillProductForm,
 } from "./helpers/factories/product-ui";
@@ -47,7 +53,13 @@ async function publishOwnProduct(page: Page, productId: string) {
 async function uploadProductImage(page: Page, productId: string) {
   await page.goto(`/admin/products/${productId}`);
   const form = adminForm(page, "image-upload");
+  const inputSelector =
+    'form[data-admin-form="image-upload"] input[name="image"]';
+  await waitForImageFormReady(page, inputSelector);
   await form.locator('input[name="image"]').setInputFiles(IMAGE_FIXTURE);
+  // CONTRACT ADDITION (image auto-compress): selection is processed
+  // asynchronously; wait for the busy marker before submitting.
+  await waitForImageProcessed(page, inputSelector);
   await form.locator('input[name="alt_ru"]').fill("Тестовое изображение");
   await form.locator('input[name="alt_ro"]').fill("Imagine de test");
   await form.getByRole("button", { name: "Загрузить изображение" }).click();
@@ -348,6 +360,65 @@ test.describe("ADM-PROD: products", () => {
       productId,
     );
     expect(storageObjects.length).toBeGreaterThan(0);
+  });
+
+  // Second upload point: the product image form runs the same browser-side
+  // auto-compression as the category form (ADM-CAT-26 covers the details).
+  test("ADM-PROD-19: Heavy product photo compressed before upload", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const category = factories.buildCategoryData(runId);
+    const categoryId = await createCategoryViaUI(page, category);
+    const product = factories.buildProductData(runId, categoryId);
+    const productId = await createProductViaUI(page, product);
+    await page.goto(`/admin/products/${productId}`);
+
+    const form = adminForm(page, "image-upload");
+    const inputSelector =
+      'form[data-admin-form="image-upload"] input[name="image"]';
+    const original = await injectGeneratedImage(page, inputSelector, {
+      kind: "noiseJpeg",
+      name: "product-big.jpg",
+      width: 4000,
+      height: 3000,
+      quality: 0.95,
+    });
+    expect(original.size).toBeGreaterThan(imageLimits.maxBytes);
+    await waitForImageProcessed(page, inputSelector);
+
+    await expect(
+      page.getByText(/Фото уменьшено: [\d.,]+ МБ → [\d.,]+ МБ \(2000×1500\)/),
+    ).toBeVisible();
+    const chosen = await page.locator(inputSelector).evaluate((el) => {
+      const file = (el as HTMLInputElement).files?.[0];
+      return file
+        ? { size: file.size, type: file.type, name: file.name }
+        : null;
+    });
+    expect(chosen?.type).toBe("image/jpeg");
+    expect(chosen?.name).toBe("product-big.jpg");
+    expect(chosen!.size).toBeLessThanOrEqual(IMAGE_TARGET_BYTES);
+
+    await form.locator('input[name="alt_ru"]').fill("Большое фото");
+    await form.locator('input[name="alt_ro"]').fill("Fotografie mare");
+    await form.getByRole("button", { name: "Загрузить изображение" }).click();
+    await expectSaved(page);
+
+    const images = await adminRead.getProductImagePaths(productId);
+    expect(images.length).toBe(1);
+    const objects = await adminRead.listStorageObjects(
+      "product-images",
+      productId,
+    );
+    const stored = objects.find(
+      (object) => object.name === images[0]?.storage_path.split("/")[1],
+    );
+    expect(stored).toBeTruthy();
+    expect(Number(stored?.metadata?.size ?? 0)).toBeLessThanOrEqual(
+      imageLimits.maxBytes,
+    );
   });
 
   test("ADM-PROD-14: Delete image confirm", async ({

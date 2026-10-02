@@ -241,4 +241,14 @@ export const adminRead = {
       );
     return data ?? [];
   },
+
+  async downloadStorageObject(bucket: string, path: string) {
+    const supabase = getLocalAdminSupabase();
+    const { data, error } = await supabase.storage.from(bucket).download(path);
+    if (error)
+      throw new Error(
+        `[adminRead] storage download ${bucket}/${path}: ${error.message}`,
+      );
+    return data; // Blob of the stored bytes (read-only)
+  },
 };
