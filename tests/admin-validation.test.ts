@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { adminErrorText } from "@/features/admin/errors";
@@ -98,15 +101,132 @@ describe("image validation explains size, type and content", () => {
     ).rejects.toMatchObject({ code: "upload_extension_mismatch" });
 
     const truncated = imageFile(pngHeader.slice(0, 8), "shot.png", "image/png");
-    // Valid PNG magic but the header itself is cut short (< 12 bytes).
+    // Valid PNG magic but the file is below the 12-byte minimum.
     await expect(validateProductImage(truncated)).rejects.toMatchObject({
       code: "upload_corrupted",
     });
   });
+});
 
-  it("accepts a well-formed PNG header", async () => {
+// ---------------------------------------------------------------------------
+// Structural verification (task "Truncated PNG"): full parse without external
+// libraries; fixtures live under e2e/fixtures/images.
+
+const fixturesDir = path.join(process.cwd(), "e2e", "fixtures", "images");
+const fixtureMimeTypes: Record<string, string> = {
+  jpg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  avif: "image/avif",
+};
+
+function fixtureBytes(relative: string): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(fs.readFileSync(path.join(fixturesDir, relative)));
+}
+
+function fixtureFile(relative: string): File {
+  const name = relative.split("/").pop()!;
+  const extension = name.split(".").pop()!.toLowerCase();
+  return new File([fixtureBytes(relative)], name, {
+    type: fixtureMimeTypes[extension]!,
+  });
+}
+
+function truncatedFile(
+  relative: string,
+  dropBytes: number,
+  name: string,
+  type: string,
+): File {
+  const full = fixtureBytes(relative);
+  return new File([full.slice(0, full.length - dropBytes)], name, { type });
+}
+
+describe("image structure verification", () => {
+  it("accepts valid files of every format", async () => {
+    for (const relative of [
+      "valid/product-photo-800x600.png",
+      "valid/product-photo-800x600.jpg",
+      "valid/product-photo-800x600.webp",
+      "valid/product-photo-800x600.avif",
+    ]) {
+      await expect(
+        validateProductImage(fixtureFile(relative)),
+      ).resolves.toBeTruthy();
+    }
+  });
+
+  it("rejects a truncated file of every format", async () => {
+    // PNG: header intact, body cut short — no IEND at the end.
     await expect(
-      validateProductImage(imageFile(pngHeader, "ok.png", "image/png")),
-    ).resolves.toEqual({ extension: "png", mimeType: "image/png" });
+      validateProductImage(
+        fixtureFile("invalid/corrupt-truncated-png-valid-header.png"),
+      ),
+    ).rejects.toMatchObject({ code: "upload_corrupted" });
+    // JPEG: missing EOI (last two bytes cut off).
+    await expect(
+      validateProductImage(
+        truncatedFile(
+          "valid/product-photo-800x600.jpg",
+          16,
+          "cut.jpg",
+          "image/jpeg",
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "upload_corrupted" });
+    // WebP: RIFF-declared size no longer matches the real file size.
+    await expect(
+      validateProductImage(
+        truncatedFile(
+          "valid/product-photo-800x600.webp",
+          8,
+          "cut.webp",
+          "image/webp",
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "upload_corrupted" });
+    // AVIF: cut inside the container header so the meta/ispe boxes are
+    // incomplete (ispe normally sits near the start, a tail cut is not enough).
+    const avif = fixtureBytes("valid/product-photo-800x600.avif");
+    await expect(
+      validateProductImage(
+        new File([avif.slice(0, 40)], "cut.avif", { type: "image/avif" }),
+      ),
+    ).rejects.toMatchObject({ code: "upload_corrupted" });
+  });
+
+  it("rejects a PNG whose chunk CRC is broken", async () => {
+    const png = fixtureBytes("valid/product-photo-800x600.png");
+    // IHDR CRC occupies bytes 29..32 (8 signature + 4 length + 4 type + 13 data).
+    png[32] ^= 0xff;
+    await expect(
+      validateProductImage(
+        new File([png], "broken.png", { type: "image/png" }),
+      ),
+    ).rejects.toMatchObject({ code: "upload_corrupted" });
+  });
+
+  it("rejects a small file declaring a huge resolution", async () => {
+    // Crafted PNG: signature + IHDR claiming 8000×6000 (48 MP > 25 MP limit).
+    const crafted = new Uint8Array(8 + 8 + 13 + 4);
+    crafted.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const view = new DataView(crafted.buffer);
+    view.setUint32(8, 13);
+    crafted.set([0x49, 0x48, 0x44, 0x52], 12); // "IHDR"
+    view.setUint32(16, 8000);
+    view.setUint32(20, 6000);
+    await expect(
+      validateProductImage(
+        new File([crafted], "huge.png", { type: "image/png" }),
+      ),
+    ).rejects.toMatchObject({ code: "upload_resolution_too_large" });
+    expect(
+      adminErrorText("upload_resolution_too_large", {
+        actual: "48,0",
+        limit: imageLimits.maxPixelsLabel,
+      }),
+    ).toBe(
+      "Разрешение изображения 48,0 Мпикс, максимум 25 Мпикс. Уменьшите фото перед загрузкой.",
+    );
   });
 });

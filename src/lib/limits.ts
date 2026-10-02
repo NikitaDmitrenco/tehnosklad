@@ -111,6 +111,10 @@ export const imageLimits = {
   allowedLabel: "JPG, PNG, WebP или AVIF",
   mimeTypes: imageMimeTypes,
   extensions: imageExtensions,
+  // Header-declared pixel cap (width × height): a tiny file can claim a huge
+  // canvas, and anything that later decodes or thumbnails it would blow up.
+  maxPixels: 25_000_000,
+  maxPixelsLabel: "25",
 } as const;
 
 // Shown next to every upload field before the user picks a file.

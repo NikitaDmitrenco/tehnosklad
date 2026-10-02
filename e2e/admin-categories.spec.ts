@@ -23,6 +23,10 @@ const OVERSIZE_IMAGE = path.resolve(
   process.cwd(),
   "e2e/fixtures/images/invalid/oversize-png-5mib-plus-1.png",
 );
+const TRUNCATED_PNG = path.resolve(
+  process.cwd(),
+  "e2e/fixtures/images/invalid/corrupt-truncated-png-valid-header.png",
+);
 
 const SEED_CATEGORY_ID = "10000000-0000-4000-8000-000000000001";
 
@@ -658,5 +662,24 @@ test.describe("ADM-CAT: categories", () => {
     await expect(
       page.getByRole("heading", { name: "Изображение категории" }),
     ).toBeVisible();
+  });
+
+  // Truncated PNG with a valid header must be rejected as a corrupted file
+  // (full structure check: chunks, CRC, IEND).
+  test("ADM-CAT-25: Truncated PNG → corrupted-file message", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+    await page.goto(`/admin/categories/${categoryId}`);
+    await page.locator('input[name="image"]').setInputFiles(TRUNCATED_PNG);
+    await page.getByRole("button", { name: "Загрузить изображение" }).click();
+    await expectErrorNotice(
+      page,
+      "upload_corrupted",
+      "Файл повреждён или обрезан и не открывается как изображение. Сохраните изображение заново и повторите загрузку.",
+    );
   });
 });

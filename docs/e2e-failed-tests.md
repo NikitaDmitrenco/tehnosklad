@@ -165,3 +165,9 @@ ADM-CAT-16 (без test.fail): до 70/160 предупреждения нет, 
 Падений нет.
 
 ADM-DASH-05 (новый): карточка «Ошибки Telegram» ведёт на /admin/leads?delivery=errors, селект доставки применён, число на карточке равно числу строк списка (.admin-list-card), заявка с permanent_failure присутствует — 3/3. ADM-DASH-03, ADM-LEAD-02 (форма фильтров), ADM-LEAD-03 (CSV) — 3/3.
+
+## 2026-10-02 09:44 · npx playwright test e2e/{admin-categories,admin-products}.spec.ts -g "ADM-CAT-20|ADM-CAT-21|ADM-CAT-25|ADM-PROD-13" --project=admin --headed --reporter=list --repeat-each=3 --workers=1 (точечный после задачи 7: структурная проверка изображений) · итог 13 passed / 0 failed
+
+Падений нет.
+
+ADM-CAT-25 (новый): обрезанный PNG (валидный заголовок, нет IEND) → «Файл повреждён или обрезан и не открывается как изображение. Сохраните изображение заново и повторите загрузку.» (upload_corrupted) — 3/3. ADM-CAT-20/PROD-13 (валидные загрузки через полную структурную проверку) и ADM-CAT-21 (mismatch) — 3/3.

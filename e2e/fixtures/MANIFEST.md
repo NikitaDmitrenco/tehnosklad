@@ -23,6 +23,14 @@ Length checks in admin server code measure **JS string length after `trim()`** (
 > текстом). Файлы `just-under-5mib.*` (5242879 B) теперь **выше** лимита
 > приложения и отклоняются. Строки таблиц ниже описывают состояние ДО этого
 > обновления, если не указано иное.
+>
+> **Обновление 2026-10-02 (задача «Truncated PNG»):** структурная проверка
+> без библиотек — PNG: все блоки + CRC + IEND; JPEG: SOI/EOI; WebP: размер
+> RIFF; AVIF: контейнер. Лимит пикселей **25 Мпикс** (`imageLimits.maxPixels`).
+> Поэтому статусы меняются: `corrupt-truncated-png-valid-header.png` теперь
+> **отклоняется** (`upload_corrupted`), `min-size-12b.png` (12 байт, нет
+> IEND) — **отклоняется**, `no-dimension-limit-8000x6000.png` (48 Мпикс) —
+> **отклоняется** (`upload_resolution_too_large`). Новый тест ADM-CAT-25.
 
 ---
 
