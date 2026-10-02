@@ -338,3 +338,17 @@ export async function gateClientChunks(
     await page.unroute("**/_next/static/**", handler);
   };
 }
+
+/**
+ * >targetBytes of garbage behind a JPEG SOI marker: Chrome cannot decode it,
+ * while the size check still sees an oversize file — the exact input for
+ * "heavy file that cannot be compressed" scenarios.
+ */
+export function oversizedJunkJpeg(targetBytes: number): Buffer {
+  const bytes = Buffer.alloc(targetBytes, 0x5a);
+  bytes[0] = 0xff;
+  bytes[1] = 0xd8;
+  bytes[2] = 0xff;
+  bytes[3] = 0xe0;
+  return bytes;
+}

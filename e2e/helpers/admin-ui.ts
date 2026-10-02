@@ -22,6 +22,15 @@ export function errorNotice(page: Page, message?: string): Locator {
   return message === undefined ? alert : alert.filter({ hasText: message });
 }
 
+/**
+ * The app's error alert filtered by text. Always filter: Next.js also
+ * renders an EMPTY role=alert route announcer, so a bare
+ * getByRole("alert") hits a strict-mode violation (two elements).
+ */
+export function errorAlert(page: Page, hasText: string | RegExp): Locator {
+  return page.getByRole("alert").filter({ hasText });
+}
+
 // Server actions run ~1-3s idle but can exceed Playwright's default 5s
 // assertion timeout when 3 workers hit the DB in parallel; still web-first
 // polling of the real redirect signal, just with headroom.

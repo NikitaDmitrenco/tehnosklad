@@ -5,6 +5,7 @@ import path from "node:path";
 import { cleanupRunArtifacts } from "./helpers/cleanup";
 import { adminRead } from "./helpers/admin-read";
 import {
+  errorAlert,
   expectErrorNotice,
   expectHtml5Blocked,
   expectSaved,
@@ -19,6 +20,7 @@ import {
   gateClientChunks,
   injectGeneratedImage,
   oversizedAnimatedGif,
+  oversizedJunkJpeg,
   waitForImageFormReady,
   waitForImageProcessed,
 } from "./helpers/image-gen";
@@ -648,8 +650,9 @@ test.describe("ADM-CAT: categories", () => {
     await page.locator('input[name="image"]').setInputFiles(INVALID_IMAGE);
     await waitForImageProcessed(page, 'input[name="image"]');
 
-    const error = page.getByRole("alert");
-    await expect(error).toContainText("Браузер не может открыть это фото");
+    // Filtered helper: Next.js also renders an EMPTY role=alert announcer.
+    const error = errorAlert(page, "Браузер не может открыть это фото");
+    await expect(error).toBeVisible();
     await expect(error).toContainText("сохраните изображение заново");
 
     // The form never submitted: no navigation flags, button locked, page alive.
@@ -662,8 +665,15 @@ test.describe("ADM-CAT: categories", () => {
     ).toBeVisible();
   });
 
-  // BUG-06 client-side gate: the oversize file must never reach the server.
-  test("ADM-CAT-23: Oversize image blocked in browser with size and limit", async ({
+  // CONTRACT CHANGE (image auto-compress): an oversize file that the browser
+  // CAN decode is no longer blocked — it is shrunk and the shrunk copy (≤3.5
+  // МБ) is what goes to the server. The fixture decodes as a tiny 32×32 PNG
+  // with TRAILING JUNK: the junk bytes after the image are discarded by the
+  // re-encode, so the notice shows 5,0 МБ → 1 КБ (32×32). The client gate
+  // still holds: input.files never carries >4 МБ past this point. The old
+  // "blocked with size error" behaviour now lives in ADM-CAT-31 (GIF above
+  // the limit) and ADM-CAT-35 (heavy undecodable JPEG).
+  test("ADM-CAT-23: Oversize image compressed in browser, saved within limit", async ({
     page,
     runId,
     factories,
@@ -672,20 +682,77 @@ test.describe("ADM-CAT: categories", () => {
     const categoryId = await factories.createCategoryViaUI(page, data);
     await page.goto(`/admin/categories/${categoryId}`);
 
-    // The hint is visible before any error appears.
+    // The hint is visible before any message appears.
     await expect(
       page.getByText("до 4 МБ", { exact: false }).first(),
     ).toBeVisible();
 
     await waitForImageFormReady(page, 'input[name="image"]');
     await page.locator('input[name="image"]').setInputFiles(OVERSIZE_IMAGE);
-    // The error states the actual size, the limit and what to do.
-    const error = page.getByRole("alert").filter({ hasText: "максимум 4 МБ" });
+    await waitForImageProcessed(page, 'input[name="image"]');
+
+    await expect(
+      page.getByText(/Фото уменьшено: 5,0 МБ → [\d.,]+ [КМ]Б \(32×32\)/),
+    ).toBeVisible();
+    const chosen = await page.locator('input[name="image"]').evaluate((el) => {
+      const file = (el as HTMLInputElement).files?.[0];
+      return file ? { size: file.size, name: file.name } : null;
+    });
+    expect(chosen).not.toBeNull();
+    expect(chosen!.size).toBeLessThanOrEqual(IMAGE_TARGET_BYTES);
+    // No error: the shrink succeeded, so the submit is open again.
+    await expect(errorAlert(page, "максимум 4 МБ")).toHaveCount(0);
+    const button = page.getByRole("button", { name: "Загрузить изображение" });
+    await expect(button).toBeEnabled();
+    expect(page.url()).not.toContain("saved=1");
+    expect(page.url()).not.toContain("error=");
+
+    // The re-encoded copy (junk discarded) is what gets saved: form does not
+    // crash and the stored object is within the hard limit.
+    await button.click();
+    await expectSaved(page);
+    const dbRow = await adminRead.getCategoryById(categoryId);
+    const storagePath = dbRow?.image_storage_path as string;
+    expect(storagePath).toBeTruthy();
+    const fileName = storagePath.slice("categories/".length);
+    const objects = await adminRead.listStorageObjects(
+      "category-images",
+      "categories",
+    );
+    const stored = objects.find((object) => object.name === fileName);
+    expect(stored).toBeTruthy();
+    expect(Number(stored?.metadata?.size ?? 0)).toBeLessThanOrEqual(
+      imageLimits.maxBytes,
+    );
+  });
+
+  // Original "heavy file that CANNOT be compressed" scenario (was part of
+  // ADM-CAT-23): >4 МБ of junk behind a JPEG SOI — Chrome cannot decode it,
+  // so the pre-existing size error (actual size + limit + what to do) shows
+  // and the submit stays locked.
+  test("ADM-CAT-35: Heavy undecodable JPEG → size error, no submit", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+    await page.goto(`/admin/categories/${categoryId}`);
+
+    const junk = oversizedJunkJpeg(Math.round(4.5 * 1024 * 1024));
+    await waitForImageFormReady(page, 'input[name="image"]');
+    await page.locator('input[name="image"]').setInputFiles({
+      name: "broken-heavy.jpg",
+      mimeType: "image/jpeg",
+      buffer: junk,
+    });
+    await waitForImageProcessed(page, 'input[name="image"]');
+
+    const error = errorAlert(page, "максимум 4 МБ");
     await expect(error).toBeVisible();
-    await expect(error).toContainText("Файл 5,0 МБ");
+    await expect(error).toContainText("Файл 4,5 МБ");
     await expect(error).toContainText("Уменьшите фото или сохраните как JPG");
 
-    // Submit is blocked: no navigation, no saved/error flags, page alive.
     const button = page.getByRole("button", { name: "Загрузить изображение" });
     await expect(button).toBeDisabled();
     expect(page.url()).not.toContain("saved=1");
@@ -712,8 +779,8 @@ test.describe("ADM-CAT: categories", () => {
     await page.locator('input[name="image"]').setInputFiles(TRUNCATED_PNG);
     await waitForImageProcessed(page, 'input[name="image"]');
 
-    const error = page.getByRole("alert");
-    await expect(error).toContainText("Браузер не может открыть это фото");
+    const error = errorAlert(page, "Браузер не может открыть это фото");
+    await expect(error).toBeVisible();
 
     const button = page.getByRole("button", { name: "Загрузить изображение" });
     await expect(button).toBeDisabled();
@@ -937,8 +1004,8 @@ test.describe("ADM-CAT: categories", () => {
     });
     await waitForImageProcessed(page, 'input[name="image"]');
 
-    const error = page.getByRole("alert");
-    await expect(error).toContainText("Недопустимый формат файла: TXT");
+    const error = errorAlert(page, "Недопустимый формат файла: TXT");
+    await expect(error).toBeVisible();
     await expect(error).toContainText("Разрешены JPG, PNG, WebP или AVIF");
 
     const button = page.getByRole("button", { name: "Загрузить изображение" });
@@ -972,8 +1039,8 @@ test.describe("ADM-CAT: categories", () => {
     await waitForImageProcessed(page, 'input[name="image"]');
 
     // Pre-existing size error (size check runs first) states size, limit, fix.
-    const error = page.getByRole("alert");
-    await expect(error).toContainText("Файл 4,5 МБ");
+    const error = errorAlert(page, "Файл 4,5 МБ");
+    await expect(error).toBeVisible();
     await expect(error).toContainText("максимум 4 МБ");
     await expect(error).toContainText("Уменьшите фото или сохраните как JPG");
 
