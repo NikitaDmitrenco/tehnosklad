@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  useCallback,
+  useEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -46,8 +48,7 @@ export function ImageUploadForm({
   // while the first is still processing discards the first outcome.
   const selectionRef = useRef(0);
 
-  const handleChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const input = event.target;
+  const processSelection = useCallback(async (input: HTMLInputElement) => {
     const file = input.files?.[0];
     if (!file) {
       setError(null);
@@ -55,6 +56,10 @@ export function ImageUploadForm({
       return;
     }
     const selection = ++selectionRef.current;
+    // Synchronous busy marker: set during the change dispatch (before the
+    // first await), so e2e tests can wait for it to clear instead of racing
+    // the async handler. Only the selection that owns the marker may clear it.
+    input.dataset.compressing = "1";
     setCompressing(true);
     setError(null);
     setNotice(null);
@@ -87,8 +92,26 @@ export function ImageUploadForm({
           : null,
       );
     } finally {
-      if (selection === selectionRef.current) setCompressing(false);
+      if (selection === selectionRef.current) {
+        delete input.dataset.compressing;
+        setCompressing(false);
+      }
     }
+  }, []);
+
+  // data-ready marks that this component is live (React listeners attached);
+  // e2e tests wait for it before selecting a file. If a file somehow got
+  // selected even earlier, onChange never fired — process it now instead of
+  // silently leaving an unprocessed photo in the input.
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.dataset.ready = "1";
+    if (input.files && input.files.length > 0) void processSelection(input);
+  }, [processSelection]);
+
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    void processSelection(event.target);
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
