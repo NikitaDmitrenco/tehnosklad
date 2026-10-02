@@ -11,12 +11,14 @@ import {
 import { SubmitButton } from "@/components/admin/submit-button";
 import { adminErrorText } from "@/features/admin/errors";
 import { checkImageFile } from "@/features/admin/image-check";
-import { imageLimits, imageShrinkTip, imageUploadHint } from "@/lib/limits";
+import { compressImage } from "@/lib/image-compress";
+import { formatMegabytes, imageCompressHint, imageLimits } from "@/lib/limits";
 
-// Client-side gate for image uploads: the file is checked on selection and
-// the submit is blocked while a problem is shown, so a heavy or wrong file
-// never leaves the browser. The server re-runs the same checks as the last
-// line of defence (see validateProductImage).
+// Client-side gate for image uploads: on selection the photo is shrunk in
+// the browser (src/lib/image-compress.ts) and the resized file replaces the
+// original in the input, so a heavy photo never leaves the browser. The file
+// is re-checked before submit and the server re-runs the same checks as the
+// last line of defence (see validateProductImage).
 export function ImageUploadForm({
   action,
   children,
@@ -37,19 +39,63 @@ export function ImageUploadForm({
   pendingText?: string;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [compressing, setCompressing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Only the latest selection may apply its result: picking a second file
+  // while the first is still processing discards the first outcome.
+  const selectionRef = useRef(0);
 
-  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.target;
+    const file = input.files?.[0];
     if (!file) {
       setError(null);
+      setNotice(null);
       return;
     }
-    const problem = checkImageFile(file);
-    setError(problem ? adminErrorText(problem.code, problem.params) : null);
+    const selection = ++selectionRef.current;
+    setCompressing(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await compressImage(file);
+      if (selection !== selectionRef.current) return;
+
+      if (result.file !== file) {
+        const transfer = new DataTransfer();
+        transfer.items.add(result.file);
+        input.files = transfer.files;
+      }
+      if (result.error) {
+        // Compression failed: surface the pre-existing size/type error when
+        // the original file itself is the problem, otherwise the reason the
+        // browser gave (it never crashed the form).
+        const originalProblem = checkImageFile(file);
+        setError(
+          originalProblem
+            ? adminErrorText(originalProblem.code, originalProblem.params)
+            : result.error,
+        );
+      } else {
+        const problem = checkImageFile(result.file);
+        setError(problem ? adminErrorText(problem.code, problem.params) : null);
+      }
+      setNotice(
+        result.wasCompressed
+          ? `Фото уменьшено: ${formatMegabytes(result.before)} → ${formatMegabytes(result.after)} (${result.width}×${result.height})`
+          : null,
+      );
+    } finally {
+      if (selection === selectionRef.current) setCompressing(false);
+    }
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    if (compressing) {
+      event.preventDefault();
+      return;
+    }
     const file = inputRef.current?.files?.[0];
     const problem = file ? checkImageFile(file) : null;
     if (problem) {
@@ -77,9 +123,21 @@ export function ImageUploadForm({
           required
           type="file"
         />
-        <span className="admin-help">
-          {imageUploadHint}. {imageShrinkTip}
-        </span>
+        <span className="admin-help">{imageCompressHint}</span>
+        {compressing ? (
+          <span aria-live="polite" className="admin-help" role="status">
+            Уменьшаю фото…
+          </span>
+        ) : null}
+        {notice ? (
+          <span
+            aria-live="polite"
+            className="mt-1 block text-sm font-bold text-emerald-800"
+            role="status"
+          >
+            {notice}
+          </span>
+        ) : null}
         {error ? (
           <span
             className="mt-1 block text-sm font-bold text-red-700"
@@ -91,7 +149,10 @@ export function ImageUploadForm({
       </label>
       {children}
       <div className="admin-form-actions">
-        <SubmitButton disabled={error !== null} pendingText={pendingText}>
+        <SubmitButton
+          disabled={error !== null || compressing}
+          pendingText={pendingText}
+        >
           {submitLabel}
         </SubmitButton>
       </div>
