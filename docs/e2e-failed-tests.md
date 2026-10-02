@@ -241,3 +241,7 @@ ADM-CAT-20 и ADM-CAT-32 — 6/6.
 ## 2026-10-02 13:16 · npx playwright test e2e/admin-products.spec.ts --project=admin --headed --reporter=list --workers=1 --repeat-each=6 -g "ADM-PROD-(13|14|19)" (точка «Товары») · итог 19 passed / 0 failed
 
 Падений нет. ADM-PROD-13 (happy-path), ADM-PROD-14 (удаление), ADM-PROD-19 (тяжёлое фото сжимается, сохраняется ≤4 МБ) — по 6/6.
+
+## 2026-10-02 13:45 · npm run test:e2e:admin -- --headed --reporter=list --workers=1 (полный admin-сьют на свежей сборке, финальный прогон T5) · итог 102 passed / 0 failed
+
+Падений нет. 7.0 мин, workers=1, repeat=1. Все новые тесты автоуменьшения (ADM-CAT-26..35, ADM-PROD-19) входят в 102; старые ADM-CAT-20/21/23/25 и ADM-PROD-13/14 проходят в обновлённом контракте.
