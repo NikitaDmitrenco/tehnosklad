@@ -83,6 +83,16 @@ export const siteSettingValueLimit = 1000;
 
 export const presentationKeyLimit = 20;
 
+// "4,2 МБ" / "640 КБ" — one formatter for the client-side check, the server
+// error texts and the tests, so the user always sees the same wording.
+export function formatMegabytes(bytes: number): string {
+  const megabytes = bytes / (1024 * 1024);
+  if (megabytes < 1) return `${Math.max(1, Math.round(bytes / 1024))} КБ`;
+  // One decimal is kept even for "4,0" so a file that barely exceeds the
+  // limit never renders identical to the limit itself.
+  return `${megabytes.toFixed(1).replace(".", ",")} МБ`;
+}
+
 const imageMimeTypes: readonly string[] = [
   "image/jpeg",
   "image/png",
@@ -102,3 +112,14 @@ export const imageLimits = {
   mimeTypes: imageMimeTypes,
   extensions: imageExtensions,
 } as const;
+
+// Shown next to every upload field before the user picks a file.
+export const imageUploadHint = `JPG, PNG, WebP или AVIF, до ${imageLimits.maxLabel}`;
+export const imageShrinkTip =
+  "Фото слишком большое? Уменьшите его в галерее («Изменить размер») или сохраните как JPG.";
+
+// Vercel request-body cap: 4.5 MB (decimal),
+// https://vercel.com/docs/functions/limitations §Request body size,
+// page last_updated 2026-08-24, checked 2026-10-01. Requests above it never
+// reach application code — src/proxy.ts answers them with a friendly page.
+export const requestBodyMaxBytes = 4_500_000;

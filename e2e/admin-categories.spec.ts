@@ -18,6 +18,10 @@ const INVALID_IMAGE = path.resolve(
   process.cwd(),
   "e2e/fixtures/images/invalid/text-renamed-to.png",
 );
+const OVERSIZE_IMAGE = path.resolve(
+  process.cwd(),
+  "e2e/fixtures/images/invalid/oversize-png-5mib-plus-1.png",
+);
 
 const SEED_CATEGORY_ID = "10000000-0000-4000-8000-000000000001";
 
@@ -518,28 +522,55 @@ test.describe("ADM-CAT: categories", () => {
     );
   });
 
-  // known bug BUG-06: AdminValidationError("image") → validation via actionCode
-  test("ADM-CAT-21: Invalid image type → intended upload_invalid (BUG-06)", async ({
+  // fixed BUG-06: upload_* codes reach the UI with a concrete cause.
+  test("ADM-CAT-21: Invalid image content → extension mismatch (BUG-06)", async ({
     page,
     runId,
     factories,
   }) => {
-    test.fail(
-      true,
-      "BUG-06: invalid image shows generic «Проверьте обязательные поля…» (validation), not the upload_invalid catalog message",
-    );
     const data = factories.buildCategoryData(runId);
     const categoryId = await factories.createCategoryViaUI(page, data);
 
     await page.goto(`/admin/categories/${categoryId}`);
     await page.locator('input[name="image"]').setInputFiles(INVALID_IMAGE);
     await page.getByRole("button", { name: "Загрузить изображение" }).click();
-    // Single intended assertion last (ADMIN_GUIDE §7.5, errors.ts:82).
+    // Single intended assertion last (errors.ts upload_extension_mismatch).
+    await expectErrorNotice(
+      page,
+      "upload_extension_mismatch",
+      "Содержимое файла не соответствует его расширению. Сохраните изображение заново в том же формате и повторите загрузку.",
+    );
+  });
+
+  // BUG-06 client-side gate: the oversize file must never reach the server.
+  test("ADM-CAT-23: Oversize image blocked in browser with size and limit", async ({
+    page,
+    runId,
+    factories,
+  }) => {
+    const data = factories.buildCategoryData(runId);
+    const categoryId = await factories.createCategoryViaUI(page, data);
+    await page.goto(`/admin/categories/${categoryId}`);
+
+    // The hint is visible before any error appears.
     await expect(
-      page.getByText(
-        "Файл должен быть JPEG, PNG, WebP или AVIF размером до 5 МБ.",
-        { exact: true },
-      ),
-    ).toBeVisible({ timeout: 20_000 });
+      page.getByText("до 4 МБ", { exact: false }).first(),
+    ).toBeVisible();
+
+    await page.locator('input[name="image"]').setInputFiles(OVERSIZE_IMAGE);
+    // The error states the actual size, the limit and what to do.
+    const error = page.getByRole("alert").filter({ hasText: "максимум 4 МБ" });
+    await expect(error).toBeVisible();
+    await expect(error).toContainText("Файл 5,0 МБ");
+    await expect(error).toContainText("Уменьшите фото или сохраните как JPG");
+
+    // Submit is blocked: no navigation, no saved/error flags, page alive.
+    const button = page.getByRole("button", { name: "Загрузить изображение" });
+    await expect(button).toBeDisabled();
+    expect(page.url()).not.toContain("saved=1");
+    expect(page.url()).not.toContain("error=");
+    await expect(
+      page.getByRole("heading", { name: "Изображение категории" }),
+    ).toBeVisible();
   });
 });

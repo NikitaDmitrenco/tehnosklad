@@ -27,7 +27,11 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: {
     useTypeScriptCli: false,
-    serverActions: { bodySizeLimit: "6mb" },
+    // Just above the app image limit (4 MiB + multipart overhead) and in
+    // line with the Vercel request-body cap (4.5 MB, vercel.com/docs/
+    // functions/limitations §Request body size, checked 2026-10-01): the
+    // browser-side check always fires first, this is the server-side net.
+    serverActions: { bodySizeLimit: "4.5mb" },
   },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];

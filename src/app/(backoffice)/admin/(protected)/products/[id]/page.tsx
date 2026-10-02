@@ -11,6 +11,7 @@ import {
   StatusBadge,
 } from "@/components/admin/admin-ui";
 import { ConfirmSubmitButton } from "@/components/admin/confirm-submit-button";
+import { ImageUploadForm } from "@/components/admin/image-upload-form";
 import { SubmitButton } from "@/components/admin/submit-button";
 import {
   deleteProductImageAction,
@@ -157,22 +158,14 @@ export default async function ProductPage({
             сервером; overwrite отключён.
           </p>
         </div>
-        <form
+        <ImageUploadForm
           action={uploadProductImageAction}
           className="grid gap-3 rounded-xl border border-dashed border-stone-300 p-4 sm:grid-cols-2"
-          data-admin-form="image-upload"
+          dataAdminForm="image-upload"
+          head={<input name="product_id" type="hidden" value={product.id} />}
+          pendingText="Загрузка…"
+          submitLabel="Загрузить изображение"
         >
-          <input name="product_id" type="hidden" value={product.id} />
-          <label className="field-label sm:col-span-2">
-            Файл
-            <input
-              accept="image/jpeg,image/png,image/webp,image/avif"
-              className="field"
-              name="image"
-              required
-              type="file"
-            />
-          </label>
           <label className="field-label">
             Alt RU
             <input
@@ -210,12 +203,7 @@ export default async function ProductPage({
             />{" "}
             Главное
           </label>
-          <div className="admin-form-actions sm:col-span-2">
-            <SubmitButton pendingText="Загрузка…">
-              Загрузить изображение
-            </SubmitButton>
-          </div>
-        </form>
+        </ImageUploadForm>
         <div className="grid gap-4">
           {product.images.map((image) => (
             <div

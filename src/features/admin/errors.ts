@@ -164,15 +164,7 @@ function safeDecode(value: string): string {
   }
 }
 
-export function adminErrorMessage(raw: string | undefined): string | null {
-  if (!raw) return null;
-  const [code = "", ...pairParts] = safeDecode(raw).split("~");
-  const params: Record<string, string> = {};
-  for (const pair of pairParts) {
-    const separator = pair.indexOf("=");
-    if (separator <= 0) continue;
-    params[pair.slice(0, separator)] = safeDecode(pair.slice(separator + 1));
-  }
+function renderMessage(code: string, params: Record<string, string>): string {
   const template =
     knownMessages.find(([needle]) => code === needle)?.[1] ??
     codeMessages[code] ??
@@ -183,4 +175,25 @@ export function adminErrorMessage(raw: string | undefined): string | null {
   if (params.ref && code === "operation_failed")
     message += ` Код обращения: ${params.ref}.`;
   return message;
+}
+
+// Direct text for a known code + params (used by the client-side upload
+// check so the browser shows exactly what the server would show).
+export function adminErrorText(
+  code: string,
+  params: AdminErrorParams = {},
+): string {
+  return renderMessage(code, params as Record<string, string>);
+}
+
+export function adminErrorMessage(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const [code = "", ...pairParts] = safeDecode(raw).split("~");
+  const params: Record<string, string> = {};
+  for (const pair of pairParts) {
+    const separator = pair.indexOf("=");
+    if (separator <= 0) continue;
+    params[pair.slice(0, separator)] = safeDecode(pair.slice(separator + 1));
+  }
+  return renderMessage(code, params);
 }

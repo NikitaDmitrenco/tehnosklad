@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { AdminDataError, type AdminErrorParams } from "@/features/admin/errors";
+import {
+  checkImageFileSize,
+  checkImageFileType,
+  resolveMimeType,
+} from "@/features/admin/image-check";
 import type { AdminAttributeDataType } from "@/features/admin/types";
 import { codeLimit, imageLimits, productLimits } from "@/lib/limits";
 
@@ -144,29 +149,74 @@ export function attributeDataType(value: FormDataEntryValue | null) {
 }
 
 const allowedImages = {
-  "image/jpeg": { extension: "jpg", signatures: [[0xff, 0xd8, 0xff]] },
-  "image/png": { extension: "png", signatures: [[0x89, 0x50, 0x4e, 0x47]] },
-  "image/webp": { extension: "webp", signatures: [[0x52, 0x49, 0x46, 0x46]] },
-  "image/avif": { extension: "avif", signatures: [[0x00, 0x00, 0x00]] },
+  "image/jpeg": { extension: "jpg", format: "jpeg" },
+  "image/png": { extension: "png", format: "png" },
+  "image/webp": { extension: "webp", format: "webp" },
+  "image/avif": { extension: "avif", format: "avif" },
 } as const;
 
+// Coarse format sniffing from the first bytes. Returns null when the bytes
+// are not a recognisable image at all (text, random data…).
+function detectImageFormat(header: Uint8Array): string | null {
+  const ascii = (start: number, end: number) =>
+    new TextDecoder().decode(header.slice(start, end));
+  if (header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff)
+    return "jpeg";
+  if (
+    header[0] === 0x89 &&
+    header[1] === 0x50 &&
+    header[2] === 0x4e &&
+    header[3] === 0x47
+  )
+    return "png";
+  if (ascii(0, 4) === "GIF8") return "gif";
+  if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") return "webp";
+  if (ascii(4, 8) === "ftyp") {
+    const brand = ascii(8, 12);
+    if (brand.startsWith("avif") || brand.startsWith("avis")) return "avif";
+    if (
+      brand.startsWith("heic") ||
+      brand.startsWith("heix") ||
+      brand.startsWith("hevc") ||
+      brand.startsWith("hevx")
+    )
+      return "heic";
+    return "ftyp"; // ISO-BMFF with an unknown brand (e.g. mif1)
+  }
+  return null;
+}
+
 export async function validateProductImage(file: File) {
-  const definition = allowedImages[file.type as keyof typeof allowedImages];
-  if (!definition || file.size < 12 || file.size > imageLimits.maxBytes)
-    throw new AdminValidationError("image");
-  const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
-  const signatureMatches = definition.signatures.some((signature) =>
-    signature.every((byte, index) => header[index] === byte),
-  );
-  const containerMatches =
-    file.type === "image/webp"
-      ? new TextDecoder().decode(header.slice(8, 12)) === "WEBP"
-      : file.type === "image/avif"
-        ? new TextDecoder().decode(header.slice(4, 12)).includes("ftyp")
-        : true;
-  if (!signatureMatches || !containerMatches)
-    throw new AdminValidationError("image");
-  return { extension: definition.extension, mimeType: file.type };
+  const sizeProblem = checkImageFileSize(file);
+  if (sizeProblem)
+    throw new AdminValidationError(
+      "image",
+      sizeProblem.code,
+      sizeProblem.params,
+    );
+  const typeProblem = checkImageFileType(file);
+  if (typeProblem)
+    throw new AdminValidationError(
+      "image",
+      typeProblem.code,
+      typeProblem.params,
+    );
+
+  const mimeType = resolveMimeType(file.name, file.type);
+  const definition =
+    allowedImages[mimeType as keyof typeof allowedImages] ??
+    allowedImages["image/png"];
+  const header = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  const detected = detectImageFormat(header);
+  // Bytes are not an image at all, or they are a different format than the
+  // extension/MIME claims (GIF named .png, PNG named .jpg, HEIC, …).
+  const formatMismatch =
+    detected === null ||
+    (detected !== definition.format &&
+      !(detected === "ftyp" && definition.format === "avif"));
+  if (formatMismatch)
+    throw new AdminValidationError("image", "upload_extension_mismatch");
+  return { extension: definition.extension, mimeType };
 }
 
 export function createProductImagePath(productId: string, extension: string) {
