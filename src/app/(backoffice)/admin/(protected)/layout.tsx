@@ -35,7 +35,7 @@ export default async function ProtectedAdminLayout({
         </div>
         <AdminNavigation />
       </div>
-      <div className="min-w-0">
+      <div className="bg-pattern min-w-0">
         <header className="sticky top-0 z-30 border-b border-stone-200 bg-white/95 backdrop-blur">
           <div className="flex min-h-16 items-center justify-between gap-3 px-4 py-2 sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">

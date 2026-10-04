@@ -80,10 +80,12 @@ function productLikeRaw(width, height, seed = 1) {
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * channels;
       const g = Math.floor((y / Math.max(1, height - 1)) * 180 + 40);
-      const n =
-        ((x * 37 + y * 91 + seed * 13) % 23) -
-        11; // -11..11 noise
-      const inLabel = y > height * 0.72 && y < height * 0.86 && x > width * 0.1 && x < width * 0.9;
+      const n = ((x * 37 + y * 91 + seed * 13) % 23) - 11; // -11..11 noise
+      const inLabel =
+        y > height * 0.72 &&
+        y < height * 0.86 &&
+        x > width * 0.1 &&
+        x < width * 0.9;
       const base = inLabel ? 230 : g;
       buf[i] = Math.max(0, Math.min(255, base + n));
       buf[i + 1] = Math.max(0, Math.min(255, Math.floor(base * 0.92) + n));
@@ -99,10 +101,13 @@ async function encode(sharp, spec) {
   let pipeline = sharp(raw, {
     raw: { width, height, channels: 3 },
   });
-  if (format === "jpeg") pipeline = pipeline.jpeg({ quality: quality ?? 82, mozjpeg: true });
+  if (format === "jpeg")
+    pipeline = pipeline.jpeg({ quality: quality ?? 82, mozjpeg: true });
   else if (format === "png") pipeline = pipeline.png({ compressionLevel: 6 });
-  else if (format === "webp") pipeline = pipeline.webp({ quality: quality ?? 80 });
-  else if (format === "avif") pipeline = pipeline.avif({ quality: quality ?? 50 });
+  else if (format === "webp")
+    pipeline = pipeline.webp({ quality: quality ?? 80 });
+  else if (format === "avif")
+    pipeline = pipeline.avif({ quality: quality ?? 50 });
   else if (format === "gif") pipeline = pipeline.gif();
   else throw new Error(`unsupported format ${format}`);
   return pipeline.toBuffer();
@@ -110,7 +115,8 @@ async function encode(sharp, spec) {
 
 /** Pad buffer to exact target size while keeping leading magic intact. */
 function padTo(buf, target, fill = 0) {
-  if (buf.length > target) throw new Error(`buffer ${buf.length} > target ${target}`);
+  if (buf.length > target)
+    throw new Error(`buffer ${buf.length} > target ${target}`);
   const out = Buffer.alloc(target, fill);
   buf.copy(out, 0);
   return out;
@@ -121,7 +127,9 @@ function pngMagic() {
 }
 
 function jpegMagic() {
-  return Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
+  return Buffer.from([
+    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+  ]);
 }
 
 function bmpHeader(width, height) {
@@ -178,7 +186,9 @@ async function main() {
   try {
     sharp = (await import("sharp")).default;
   } catch (err) {
-    console.error("sharp is not available in node_modules — cannot encode images.");
+    console.error(
+      "sharp is not available in node_modules — cannot encode images.",
+    );
     console.error(String(err));
     process.exit(2);
   }
@@ -186,15 +196,70 @@ async function main() {
   console.log("Generating valid images…");
 
   const validSpecs = [
-    { name: "product-photo-800x600.jpg", width: 800, height: 600, format: "jpeg", quality: 82 },
-    { name: "product-photo-1200x1200.jpg", width: 1200, height: 1200, format: "jpeg", quality: 80 },
-    { name: "product-photo-1920x1080.jpg", width: 1920, height: 1080, format: "jpeg", quality: 78 },
-    { name: "product-photo-600x800.jpg", width: 600, height: 800, format: "jpeg", quality: 82 },
-    { name: "product-photo-800x600.png", width: 800, height: 600, format: "png" },
-    { name: "product-photo-800x600.webp", width: 800, height: 600, format: "webp", quality: 80 },
-    { name: "product-photo-800x600.avif", width: 800, height: 600, format: "avif", quality: 50 },
-    { name: "category-cover-1600x900.jpg", width: 1600, height: 900, format: "jpeg", quality: 80, seed: 7 },
-    { name: "typical-max-4000x3000.jpg", width: 4000, height: 3000, format: "jpeg", quality: 70, seed: 11 },
+    {
+      name: "product-photo-800x600.jpg",
+      width: 800,
+      height: 600,
+      format: "jpeg",
+      quality: 82,
+    },
+    {
+      name: "product-photo-1200x1200.jpg",
+      width: 1200,
+      height: 1200,
+      format: "jpeg",
+      quality: 80,
+    },
+    {
+      name: "product-photo-1920x1080.jpg",
+      width: 1920,
+      height: 1080,
+      format: "jpeg",
+      quality: 78,
+    },
+    {
+      name: "product-photo-600x800.jpg",
+      width: 600,
+      height: 800,
+      format: "jpeg",
+      quality: 82,
+    },
+    {
+      name: "product-photo-800x600.png",
+      width: 800,
+      height: 600,
+      format: "png",
+    },
+    {
+      name: "product-photo-800x600.webp",
+      width: 800,
+      height: 600,
+      format: "webp",
+      quality: 80,
+    },
+    {
+      name: "product-photo-800x600.avif",
+      width: 800,
+      height: 600,
+      format: "avif",
+      quality: 50,
+    },
+    {
+      name: "category-cover-1600x900.jpg",
+      width: 1600,
+      height: 900,
+      format: "jpeg",
+      quality: 80,
+      seed: 7,
+    },
+    {
+      name: "typical-max-4000x3000.jpg",
+      width: 4000,
+      height: 3000,
+      format: "jpeg",
+      quality: 70,
+      seed: 11,
+    },
   ];
 
   for (const spec of validSpecs) {
@@ -210,7 +275,9 @@ async function main() {
               ? "image/avif"
               : "image/gif";
     if (buf.length > LIMIT) {
-      console.warn(`WARN ${spec.name} encoded size ${buf.length} > 5MiB — adjusting quality`);
+      console.warn(
+        `WARN ${spec.name} encoded size ${buf.length} > 5MiB — adjusting quality`,
+      );
       // re-encode lower quality
       const smaller = await encode(sharp, { ...spec, quality: 40 });
       writeBinary("images/valid", spec.name, smaller, {
@@ -219,7 +286,8 @@ async function main() {
         pixelSize: `${spec.width}x${spec.height}`,
         expected: "accept (MIME+magic+size)",
         rule: "validation.ts:132-155 size<=5MiB",
-        scenarios: spec.format === "jpeg" ? "ADM-CAT-20,ADM-PROD-13" : "ADM-PROD-13",
+        scenarios:
+          spec.format === "jpeg" ? "ADM-CAT-20,ADM-PROD-13" : "ADM-PROD-13",
         notes: "re-encoded to fit under 5MiB",
       });
       continue;
@@ -230,13 +298,19 @@ async function main() {
       pixelSize: `${spec.width}x${spec.height}`,
       expected: "accept (MIME+magic+size)",
       rule: "validation.ts:132-155",
-      scenarios: spec.format === "jpeg" ? "ADM-CAT-20,ADM-PROD-13" : "ADM-PROD-13",
+      scenarios:
+        spec.format === "jpeg" ? "ADM-CAT-20,ADM-PROD-13" : "ADM-PROD-13",
     });
   }
 
   // Size boundary just under limit: valid PNG padded to UNDER.
   {
-    const base = await encode(sharp, { width: 32, height: 32, format: "png", seed: 3 });
+    const base = await encode(sharp, {
+      width: 32,
+      height: 32,
+      format: "png",
+      seed: 3,
+    });
     const padded = padTo(base, UNDER);
     writeBinary("images/valid", "just-under-5mib.png", padded, {
       category: "valid",
@@ -248,7 +322,13 @@ async function main() {
     });
   }
   {
-    const base = await encode(sharp, { width: 32, height: 32, format: "jpeg", quality: 50, seed: 4 });
+    const base = await encode(sharp, {
+      width: 32,
+      height: 32,
+      format: "jpeg",
+      quality: 50,
+      seed: 4,
+    });
     const padded = padTo(base, UNDER);
     writeBinary("images/valid", "just-under-5mib.jpg", padded, {
       category: "valid",
@@ -301,7 +381,8 @@ async function main() {
         category: "invalid",
         format: "image/png",
         pixelSize: "8000x6000",
-        expected: "NOT valid — exceeds 5MiB size rule (no pixel-dimension rule exists)",
+        expected:
+          "NOT valid — exceeds 5MiB size rule (no pixel-dimension rule exists)",
         rule: "validation.ts:141",
         scenarios: "documentation",
         generated: false,
@@ -315,16 +396,23 @@ async function main() {
         seed: 21,
       });
       if (typical.length <= LIMIT) {
-        writeBinary("images/valid", "no-dimension-limit-typical-max.png", typical, {
-          category: "valid",
-          format: "image/png",
-          pixelSize: "4000x3000",
-          expected: "accept — no pixel-dimension rule in CODE",
-          rule: "validation.ts:132-155",
-          scenarios: "documentation",
-        });
+        writeBinary(
+          "images/valid",
+          "no-dimension-limit-typical-max.png",
+          typical,
+          {
+            category: "valid",
+            format: "image/png",
+            pixelSize: "4000x3000",
+            expected: "accept — no pixel-dimension rule in CODE",
+            rule: "validation.ts:132-155",
+            scenarios: "documentation",
+          },
+        );
       } else {
-        console.warn("WARN typical-max png still over limit; skipped as valid fixture.");
+        console.warn(
+          "WARN typical-max png still over limit; skipped as valid fixture.",
+        );
       }
     }
   }
@@ -333,7 +421,8 @@ async function main() {
 
   // Text renamed to .png
   {
-    const text = "This is not an image. Just plain UTF-8 text for MIME/magic mismatch.\n";
+    const text =
+      "This is not an image. Just plain UTF-8 text for MIME/magic mismatch.\n";
     const buf = Buffer.from(text, "utf8");
     writeBinary("images/invalid", "text-renamed-to.png", buf, {
       category: "invalid",
@@ -348,7 +437,12 @@ async function main() {
 
   // Valid PNG bytes named .jpg
   {
-    const png = await encode(sharp, { width: 64, height: 64, format: "png", seed: 5 });
+    const png = await encode(sharp, {
+      width: 64,
+      height: 64,
+      format: "png",
+      seed: 5,
+    });
     writeBinary("images/invalid", "valid-png-renamed-to.jpg", png, {
       category: "invalid",
       format: "image/png bytes, ext .jpg",
@@ -362,7 +456,12 @@ async function main() {
 
   // PNG bytes; Playwright must send mimeType image/jpeg
   {
-    const png = await encode(sharp, { width: 64, height: 64, format: "png", seed: 6 });
+    const png = await encode(sharp, {
+      width: 64,
+      height: 64,
+      format: "png",
+      seed: 6,
+    });
     writeBinary("images/invalid", "png-bytes-mime-jpeg.png", png, {
       category: "invalid",
       format: "image/png bytes; test must set mimeType=image/jpeg",
@@ -401,13 +500,19 @@ async function main() {
 
   // Oversize PNG = OVER bytes (valid magic at start)
   {
-    const base = await encode(sharp, { width: 32, height: 32, format: "png", seed: 8 });
+    const base = await encode(sharp, {
+      width: 32,
+      height: 32,
+      format: "png",
+      seed: 8,
+    });
     const padded = padTo(base, OVER);
     writeBinary("images/invalid", "oversize-png-5mib-plus-1.png", padded, {
       category: "invalid",
       format: "image/png",
       pixelSize: "32x32 (+ padding)",
-      expected: "reject — size > 5242880 (CODE validation; OBS may show error boundary)",
+      expected:
+        "reject — size > 5242880 (CODE validation; OBS may show error boundary)",
       rule: "validation.ts:141",
       scenarios: "ADM-CAT-21 size note",
       violates: "size",
@@ -416,7 +521,13 @@ async function main() {
 
   // Oversize JPEG = OVER bytes
   {
-    const base = await encode(sharp, { width: 32, height: 32, format: "jpeg", quality: 50, seed: 9 });
+    const base = await encode(sharp, {
+      width: 32,
+      height: 32,
+      format: "jpeg",
+      quality: 50,
+      seed: 9,
+    });
     const padded = padTo(base, OVER);
     writeBinary("images/invalid", "oversize-jpg-5mib-plus-1.jpg", padded, {
       category: "invalid",
@@ -431,30 +542,48 @@ async function main() {
 
   // Truncated PNG with valid header — CODE ACCEPTS (only first 16 bytes checked)
   {
-    const full = await encode(sharp, { width: 64, height: 64, format: "png", seed: 10 });
+    const full = await encode(sharp, {
+      width: 64,
+      height: 64,
+      format: "png",
+      seed: 10,
+    });
     // Keep IHDR-ish start: PNG signature + some bytes; truncate body
     const truncated = full.subarray(0, Math.min(80, full.length));
-    writeBinary("images/invalid", "corrupt-truncated-png-valid-header.png", truncated, {
-      category: "invalid",
-      format: "image/png truncated",
-      pixelSize: "64x64 (incomplete)",
-      expected:
-        "CODE ACCEPTS magic-only check — NOT a reliable rejection fixture (OWNER DECISION vs DOC)",
-      rule: "validation.ts:143-154 only reads 16 bytes",
-      scenarios: "documentation / OWNER DECISION",
-      violates: "none under CODE (DOC content-match unclear)",
-      notes: "Do not assert reject on current CODE.",
-    });
+    writeBinary(
+      "images/invalid",
+      "corrupt-truncated-png-valid-header.png",
+      truncated,
+      {
+        category: "invalid",
+        format: "image/png truncated",
+        pixelSize: "64x64 (incomplete)",
+        expected:
+          "CODE ACCEPTS magic-only check — NOT a reliable rejection fixture (OWNER DECISION vs DOC)",
+        rule: "validation.ts:143-154 only reads 16 bytes",
+        scenarios: "documentation / OWNER DECISION",
+        violates: "none under CODE (DOC content-match unclear)",
+        notes: "Do not assert reject on current CODE.",
+      },
+    );
   }
 
   // Disallowed formats
   {
     // Minimal GIF87a
-    const gif = Buffer.from("GIF89a" + "0100" + "0100" + "00" + "00" + "00" + "3b", "binary");
+    const gif = Buffer.from(
+      "GIF89a" + "0100" + "0100" + "00" + "00" + "00" + "3b",
+      "binary",
+    );
     // simpler fixed header
     const gif89a = Buffer.concat([
       Buffer.from("GIF89a", "ascii"),
-      Buffer.from([0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x21, 0xf9, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b]),
+      Buffer.from([
+        0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00, 0xff, 0xff, 0xff, 0x00, 0x00,
+        0x00, 0x21, 0xf9, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00,
+        0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00,
+        0x3b,
+      ]),
     ]);
     writeBinary("images/invalid", "disallowed-gif.gif", gif89a, {
       category: "invalid",
@@ -498,7 +627,8 @@ async function main() {
     scenarios: "ADM-CAT-21 class",
     violates: "mime",
     generated: false,
-    notes: "NOT GENERATED: sharp heif output is avif only; no HEIC encoder in project.",
+    notes:
+      "NOT GENERATED: sharp heif output is avif only; no HEIC encoder in project.",
   });
   console.log("SKIP images/invalid/disallowed-heic.heic (no HEIC encoder)");
 
@@ -515,7 +645,8 @@ async function main() {
       category: "invalid",
       format: "image/tiff",
       pixelSize: "n/a",
-      expected: "reject — MIME not in admin allowlist (sharp can write tiff but app rejects)",
+      expected:
+        "reject — MIME not in admin allowlist (sharp can write tiff but app rejects)",
       rule: "validation.ts:132-141",
       scenarios: "extra negative",
       violates: "mime",
@@ -538,7 +669,12 @@ async function main() {
 
   // PNG bytes named .gif
   {
-    const png = await encode(sharp, { width: 48, height: 48, format: "png", seed: 12 });
+    const png = await encode(sharp, {
+      width: 48,
+      height: 48,
+      format: "png",
+      seed: 12,
+    });
     writeBinary("images/invalid", "png-bytes-named-gif.gif", png, {
       category: "invalid",
       format: "image/png bytes, ext .gif",
@@ -596,7 +732,8 @@ async function main() {
   // Category name
   textFixture("text/category_name_ru/len240.txt", repeat("Н", 240), {
     field: "category.name.ru",
-    expected: "CODE accepts 240; DB check is 160 — may fail at RPC (OWNER DECISION)",
+    expected:
+      "CODE accepts 240; DB check is 160 — may fail at RPC (OWNER DECISION)",
     rule: "actions.ts:58 max 240 vs initial_schema.sql:60 max 160",
     scenarios: "ADM-CAT-10",
     notes: "CODE vs DB disagreement",
@@ -1051,7 +1188,8 @@ async function main() {
   });
   textFixture("text/shared/html_script_name.txt", special.html_script, {
     field: "category.name.ru",
-    expected: "stored as text by admin server (no HTML sanitize in requiredText)",
+    expected:
+      "stored as text by admin server (no HTML sanitize in requiredText)",
     rule: "validation.ts:16-26",
     scenarios: "ADM-CAT-10",
     notes: "XSS on storefront is a separate concern",
@@ -1062,12 +1200,16 @@ async function main() {
     rule: "validation.ts:16-26",
     scenarios: "ADM-CAT-10",
   });
-  textFixture("text/shared/leading_trailing_name.txt", special.leading_trailing, {
-    field: "category.name.ru",
-    expected: "server trims → stored 'padded value'",
-    rule: "validation.ts:22",
-    scenarios: "ADM-CAT-10",
-  });
+  textFixture(
+    "text/shared/leading_trailing_name.txt",
+    special.leading_trailing,
+    {
+      field: "category.name.ru",
+      expected: "server trims → stored 'padded value'",
+      rule: "validation.ts:22",
+      scenarios: "ADM-CAT-10",
+    },
+  );
   textFixture("text/shared/only_spaces_name.txt", special.only_spaces, {
     field: "category.name.ru",
     category: "invalid",
@@ -1079,7 +1221,8 @@ async function main() {
   textFixture("text/shared/very_long_10k.txt", repeat("x", 10000), {
     field: "various",
     category: "boundary",
-    expected: "valid for product.description (10000); invalid for name/short/seo/etc.",
+    expected:
+      "valid for product.description (10000); invalid for name/short/seo/etc.",
     rule: "field-specific max",
     scenarios: "multiple",
   });
@@ -1183,7 +1326,11 @@ async function main() {
 
   // Write indexes
   fs.writeFileSync(INDEX_JSON, JSON.stringify(records, null, 2) + "\n", "utf8");
-  fs.writeFileSync(TEXT_INDEX, JSON.stringify(textIndex, null, 2) + "\n", "utf8");
+  fs.writeFileSync(
+    TEXT_INDEX,
+    JSON.stringify(textIndex, null, 2) + "\n",
+    "utf8",
+  );
   console.log(`\nWrote ${records.length} binary/text records to ${INDEX_JSON}`);
   console.log(`Wrote ${textIndex.length} text entries to ${TEXT_INDEX}`);
 

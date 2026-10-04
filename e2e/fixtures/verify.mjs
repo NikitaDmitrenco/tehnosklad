@@ -16,10 +16,20 @@ const INDEX = path.join(__dirname, "fixtures.json");
 const LIMIT = 5 * 1024 * 1024;
 const MIN = 12;
 
-const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
+const ALLOWED_MIME = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/avif",
+]);
 
 function detectFormat(buf) {
-  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+  if (
+    buf.length >= 3 &&
+    buf[0] === 0xff &&
+    buf[1] === 0xd8 &&
+    buf[2] === 0xff
+  ) {
     return { format: "jpeg", mime: "image/jpeg" };
   }
   if (
@@ -55,7 +65,12 @@ function detectFormat(buf) {
   if (buf.length >= 2 && buf.toString("ascii", 0, 2) === "BM") {
     return { format: "bmp", mime: "image/bmp" };
   }
-  if (buf.length >= 4 && buf[0] === 0x49 && buf[1] === 0x49 && buf[2] === 0x2a) {
+  if (
+    buf.length >= 4 &&
+    buf[0] === 0x49 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x2a
+  ) {
     return { format: "tiff", mime: "image/tiff" };
   }
   const head = buf.toString("utf8", 0, Math.min(buf.length, 200));
@@ -91,7 +106,13 @@ function parseDimensions(format, buf) {
       }
       const length = buf.readUInt16BE(offset + 2);
       // SOF0..SOF15 except DHT/JPG/DAC
-      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      if (
+        marker >= 0xc0 &&
+        marker <= 0xcf &&
+        marker !== 0xc4 &&
+        marker !== 0xc8 &&
+        marker !== 0xcc
+      ) {
         const height = buf.readUInt16BE(offset + 5);
         const width = buf.readUInt16BE(offset + 7);
         return { width, height };
@@ -138,7 +159,10 @@ function parseDimensions(format, buf) {
     return { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8) };
   }
   if (format === "bmp" && buf.length >= 26) {
-    return { width: buf.readInt32LE(18), height: Math.abs(buf.readInt32LE(22)) };
+    return {
+      width: buf.readInt32LE(18),
+      height: Math.abs(buf.readInt32LE(22)),
+    };
   }
   return null;
 }
@@ -182,7 +206,11 @@ function checkImageRules(buf, declaredMime) {
     let containerOk = true;
 
     if (declaredMime === "image/jpeg") {
-      magicOk = header.length >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+      magicOk =
+        header.length >= 3 &&
+        header[0] === 0xff &&
+        header[1] === 0xd8 &&
+        header[2] === 0xff;
     } else if (declaredMime === "image/png") {
       magicOk =
         header.length >= 4 &&
@@ -197,10 +225,16 @@ function checkImageRules(buf, declaredMime) {
         header[1] === 0x49 &&
         header[2] === 0x46 &&
         header[3] === 0x46;
-      containerOk = header.length >= 12 && buf.toString("ascii", 8, 12) === "WEBP";
+      containerOk =
+        header.length >= 12 && buf.toString("ascii", 8, 12) === "WEBP";
     } else if (declaredMime === "image/avif") {
-      magicOk = header.length >= 3 && header[0] === 0x00 && header[1] === 0x00 && header[2] === 0x00;
-      containerOk = buf.length >= 12 && buf.toString("ascii", 4, 12).includes("ftyp");
+      magicOk =
+        header.length >= 3 &&
+        header[0] === 0x00 &&
+        header[1] === 0x00 &&
+        header[2] === 0x00;
+      containerOk =
+        buf.length >= 12 && buf.toString("ascii", 4, 12).includes("ftyp");
     }
 
     if (!magicOk) {
@@ -239,7 +273,11 @@ function inferDeclaredMime(relPath, rec) {
     ".heic": "image/heic",
     ".txt": "text/plain",
   };
-  if (rec && typeof rec.format === "string" && rec.format.includes("mimeType=image/jpeg")) {
+  if (
+    rec &&
+    typeof rec.format === "string" &&
+    rec.format.includes("mimeType=image/jpeg")
+  ) {
     return "image/jpeg";
   }
   return byExt[ext] || "application/octet-stream";
@@ -254,9 +292,7 @@ function main() {
   const rows = [];
   let mismatch = 0;
 
-  console.log(
-    ["file", "expected", "actual", "OK/MISMATCH"].join(" | "),
-  );
+  console.log(["file", "expected", "actual", "OK/MISMATCH"].join(" | "));
   console.log("-".repeat(100));
 
   for (const rec of records) {
@@ -300,19 +336,31 @@ function main() {
         // CODE accepts truncated-with-header if size/magic ok
         if (check.rejected) {
           status = "MISMATCH";
-          notes.push("truncated file unexpectedly rejected by rule re-implementation");
+          notes.push(
+            "truncated file unexpectedly rejected by rule re-implementation",
+          );
         } else {
-          notes.push("CODE accepts (magic-only); expected note is documentation");
+          notes.push(
+            "CODE accepts (magic-only); expected note is documentation",
+          );
         }
       } else if (expectValid) {
         if (check.rejected) {
           status = "MISMATCH";
-          notes.push(`valid file rejected: ${check.reasons.map((r) => r.detail).join("; ")}`);
-        } else if (rec.pixelSize && rec.pixelSize !== "n/a" && !rec.pixelSize.includes("padding")) {
+          notes.push(
+            `valid file rejected: ${check.reasons.map((r) => r.detail).join("; ")}`,
+          );
+        } else if (
+          rec.pixelSize &&
+          rec.pixelSize !== "n/a" &&
+          !rec.pixelSize.includes("padding")
+        ) {
           const expectedDims = rec.pixelSize.split(" ")[0];
           if (dims && `${dims.width}x${dims.height}` !== expectedDims) {
             // still OK if format valid; report dim
-            notes.push(`dims ${dims.width}x${dims.height} vs manifest ${rec.pixelSize}`);
+            notes.push(
+              `dims ${dims.width}x${dims.height} vs manifest ${rec.pixelSize}`,
+            );
           }
         }
       } else if (rec.category === "invalid") {
@@ -326,12 +374,15 @@ function main() {
           // Map: magic/magic-vs-mime → magic; size → size; mime → mime
           const mapped = new Set();
           for (const r of check.reasons) {
-            if (r.rule === "magic" || r.rule === "container") mapped.add("magic");
+            if (r.rule === "magic" || r.rule === "container")
+              mapped.add("magic");
             else mapped.add(r.rule);
           }
           if (primary === "magic-vs-mime" && !mapped.has("magic")) {
             status = "MISMATCH";
-            notes.push(`expected magic violation, got ${[...mapped].join(",")}`);
+            notes.push(
+              `expected magic violation, got ${[...mapped].join(",")}`,
+            );
           } else if (primary === "size" && !mapped.has("size")) {
             status = "MISMATCH";
             notes.push(`expected size violation, got ${[...mapped].join(",")}`);
@@ -342,12 +393,16 @@ function main() {
             // GIF etc: only mime should fire if size ok
             if (buf.length < MIN || buf.length > LIMIT) {
               status = "MISMATCH";
-              notes.push(`mime fixture also violates size (${[...mapped].join(",")})`);
+              notes.push(
+                `mime fixture also violates size (${[...mapped].join(",")})`,
+              );
             }
           } else if (primary === "magic-vs-mime" && mapped.size > 1) {
             if (mapped.has("size")) {
               status = "MISMATCH";
-              notes.push(`magic fixture also violates size: ${[...mapped].join(",")}`);
+              notes.push(
+                `magic fixture also violates size: ${[...mapped].join(",")}`,
+              );
             }
           }
         }
@@ -408,9 +463,7 @@ function main() {
       actual,
       status: status + noteStr,
     });
-    console.log(
-      [rec.path, rec.expected, actual, status + noteStr].join(" | "),
-    );
+    console.log([rec.path, rec.expected, actual, status + noteStr].join(" | "));
   }
 
   console.log("\n=== SUMMARY ===");

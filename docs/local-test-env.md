@@ -103,12 +103,12 @@ E2E_ADMIN_PASSWORD=<задайте в .env.local, не менее 8 символ
 
 ## Тестовый администратор
 
-| Поле | Значение |
-|------|----------|
-| Email | `admin.e2e@tehnosklad.local` |
-| Пароль | Задан в `.env.local` (`E2E_ADMIN_PASSWORD`) |
-| Роль | `admin` в `user_roles` |
-| Профиль | `is_active = true` в `profiles` |
+| Поле    | Значение                                    |
+| ------- | ------------------------------------------- |
+| Email   | `admin.e2e@tehnosklad.local`                |
+| Пароль  | Задан в `.env.local` (`E2E_ADMIN_PASSWORD`) |
+| Роль    | `admin` в `user_roles`                      |
+| Профиль | `is_active = true` в `profiles`             |
 
 Создание/обновление: `node scripts/local-test/ensure-admin.mjs`
 
@@ -146,15 +146,15 @@ npm run test:integration:local  # Полный цикл: SQL-проверки + 
 
 ## Порты
 
-| Сервис | Порт |
-|--------|------|
-| Next.js dev / production server | 3000 |
-| Next.js production (integration) | 3100 |
+| Сервис                               | Порт  |
+| ------------------------------------ | ----- |
+| Next.js dev / production server      | 3000  |
+| Next.js production (integration)     | 3100  |
 | Supabase API (PostgREST, Auth, etc.) | 54321 |
-| PostgreSQL | 54322 |
-| Shadow DB (migrations) | 54320 |
-| Supabase Studio | 54323 |
-| Mailpit (SMTP) | 54324 |
+| PostgreSQL                           | 54322 |
+| Shadow DB (migrations)               | 54320 |
+| Supabase Studio                      | 54323 |
+| Mailpit (SMTP)                       | 54324 |
 
 ## Типовые проблемы
 
@@ -191,6 +191,7 @@ E2E-тесты могут оставлять orphaned slug routes (FK RESTRICT �
 ### Node 22 не найден
 
 Если fnm не установлен или `fnm use` не работает:
+
 1. Установите fnm: `winget install Schniz.fnm`
 2. Добавьте в PowerShell profile: `fnm env --shell powershell | Invoke-Expression`
 3. Запустите новый терминал
@@ -198,21 +199,22 @@ E2E-тесты могут оставлять orphaned slug routes (FK RESTRICT �
 
 ## Известные отличия от production
 
-| Аспект | Production (Vercel) | Локальная dev среда | Локальная production-like |
-|--------|---------------------|---------------------|---------------------------|
-| Node.js | 22.x (Vercel) | 22.x (fnm) | 22.x (fnm) |
-| Bundler | webpack | Turbopack | webpack |
-| NODE_ENV | production | development | production |
-| CSP | `connect-src 'self' https://*.supabase.co` | Аналогично | Аналогично |
-| HTTPS | Да | Нет (HTTP localhost) | Нет (HTTP localhost) |
-| Cookies | Secure + SameSite=Lax | Non-secure (localhost) | Non-secure (localhost) |
-| Rate limiting | `x-vercel-forwarded-for` | Fallback на process-local | Fallback на process-local |
-| Supabase Analytics | Включён (hosted) | `supabase_vector` рестартится (Docker TCP, не критично) | То же |
-| Telegram | Настраивается отдельно | Пустые переменные → `permanent_failure` | Пустые переменные → `permanent_failure` |
-| AI fallback | Работает | Работает | Работает |
-| Supabase ключи | Зависит от CLI/hosting | `sb_publishable_*` / `sb_secret_*` (Supabase CLI 2.111+) | То же |
+| Аспект             | Production (Vercel)                        | Локальная dev среда                                      | Локальная production-like               |
+| ------------------ | ------------------------------------------ | -------------------------------------------------------- | --------------------------------------- |
+| Node.js            | 22.x (Vercel)                              | 22.x (fnm)                                               | 22.x (fnm)                              |
+| Bundler            | webpack                                    | Turbopack                                                | webpack                                 |
+| NODE_ENV           | production                                 | development                                              | production                              |
+| CSP                | `connect-src 'self' https://*.supabase.co` | Аналогично                                               | Аналогично                              |
+| HTTPS              | Да                                         | Нет (HTTP localhost)                                     | Нет (HTTP localhost)                    |
+| Cookies            | Secure + SameSite=Lax                      | Non-secure (localhost)                                   | Non-secure (localhost)                  |
+| Rate limiting      | `x-vercel-forwarded-for`                   | Fallback на process-local                                | Fallback на process-local               |
+| Supabase Analytics | Включён (hosted)                           | `supabase_vector` рестартится (Docker TCP, не критично)  | То же                                   |
+| Telegram           | Настраивается отдельно                     | Пустые переменные → `permanent_failure`                  | Пустые переменные → `permanent_failure` |
+| AI fallback        | Работает                                   | Работает                                                 | Работает                                |
+| Supabase ключи     | Зависит от CLI/hosting                     | `sb_publishable_*` / `sb_secret_*` (Supabase CLI 2.111+) | То же                                   |
 
 **Замечание по тестам:**
+
 - 4 падения публичных Playwright-тестов (product link navigation) наблюдаются **только** в dev-режиме (Turbopack). В production-like режиме (webpack) все 4 проходят. Артефакты dev-сервера, не баги.
 - Тест `locale-switching.spec.ts:19` падает в production-like режиме: `localeCookieOptions()` ставит `secure: true` при `NODE_ENV=production`, а сервер работает по HTTP. Playwright Chromium не сохраняет Secure-куку поверх HTTP localhost. В dev (`secure: false`) тест проходит. Код приложения корректен для Vercel (HTTPS). Тест написан под dev-окружение.
 

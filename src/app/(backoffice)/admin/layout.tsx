@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ru">
-      <body className="min-h-screen">{children}</body>
+      <body className="bg-pattern min-h-screen">{children}</body>
     </html>
   );
 }

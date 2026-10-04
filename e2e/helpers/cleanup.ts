@@ -64,7 +64,9 @@ export async function cleanupRunArtifacts(runId: string): Promise<void> {
 
     // Storage objects keyed by deleted uuids.
     if (categoryObjectPaths.length > 0) {
-      await supabase.storage.from("category-images").remove(categoryObjectPaths);
+      await supabase.storage
+        .from("category-images")
+        .remove(categoryObjectPaths);
     }
 
     const productBucket = supabase.storage.from("product-images");

@@ -132,7 +132,11 @@ export default async function PublicLayout({
           alternateHref={alternateHref}
           alternateFor={pathname}
         />
-        <main id="main-content" className="min-w-0 flex-1" tabIndex={-1}>
+        <main
+          id="main-content"
+          className="bg-pattern min-w-0 flex-1"
+          tabIndex={-1}
+        >
           {children}
         </main>
         <SiteFooter

@@ -55,8 +55,7 @@ const serviceRoleKey =
 
 const adminEmail =
   env.E2E_ADMIN_EMAIL || env.TEST_ADMIN_EMAIL || "admin.e2e@tehnosklad.local";
-const adminPassword =
-  env.E2E_ADMIN_PASSWORD || env.TEST_ADMIN_PASSWORD;
+const adminPassword = env.E2E_ADMIN_PASSWORD || env.TEST_ADMIN_PASSWORD;
 
 if (!adminPassword) {
   console.error(
@@ -166,7 +165,12 @@ const { data: role, error: verifyRoleErr } = await supabase
   .eq("user_id", userId)
   .single();
 
-if (verifyProfileErr || !profile?.is_active || verifyRoleErr || role?.role !== "admin") {
+if (
+  verifyProfileErr ||
+  !profile?.is_active ||
+  verifyRoleErr ||
+  role?.role !== "admin"
+) {
   console.error("[ensure-admin] Verification failed!");
   console.error("  profile:", profile, verifyProfileErr);
   console.error("  role:", role, verifyRoleErr);

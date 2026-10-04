@@ -440,10 +440,23 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  min-height: 100%;
+}
+
 html {
   color-scheme: light;
   scroll-behavior: smooth;
   scroll-padding-top: calc(6rem + env(safe-area-inset-top, 0px));
+}
+
+.bg-pattern {
+  background-color: #fafaf8;
+  background-image: url("/images/bg-pattern.png");
+  background-size: 100% auto;
+  background-repeat: repeat-y;
+  background-position: top center;
 }
 
 body {
@@ -452,10 +465,6 @@ body {
   margin: 0;
   overflow-x: clip;
   background-color: #fafaf8;
-  background-image: url("/images/bg-pattern.png");
-  background-size: 100% auto;
-  background-repeat: repeat-y;
-  background-position: top center;
   color: var(--ink);
   font-family: Arial, Helvetica, sans-serif;
   line-height: 1.5;

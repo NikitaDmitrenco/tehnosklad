@@ -92,100 +92,102 @@ export default async function HomePage({
           </div>
         </PageContainer>
       </section>
-      <section className="py-14">
-        <PageContainer>
-          <CarouselSection
-            header={
-              <div>
-                <h2 className="section-title text-xl sm:text-3xl font-bold">
-                  {d.home.categoriesTitle}
-                </h2>
-                <p className="mt-2 text-stone-600">
-                  {d.home.categoriesDescription}
-                </p>
-              </div>
-            }
-            action={
-              <Link
-                className="font-bold underline"
-                href={localizedPath(locale, "catalog")}
-              >
-                {d.actions.openCatalog}
-              </Link>
-            }
-          >
-            {categories.map((category) => (
-              <Link
-                className="group flex w-[260px] sm:w-[calc((100%-1rem)/2)] md:w-[calc((100%-2rem)/3)] lg:w-[calc((100%-3rem)/4)] shrink-0 snap-start flex-col rounded-xl border border-stone-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                key={category.id}
-                href={localizedPath(locale, `category/${category.slug}`)}
-              >
-                <ProductIllustration
-                  category={category.presentationKey}
-                  tone={getCategoryTone(category.presentationKey)}
-                  label={category.name}
-                  className="h-36"
-                />
-                <h3 className="mt-4 text-xl font-bold">{category.name}</h3>
-                <p className="mt-1 text-sm text-stone-600 line-clamp-2">
-                  {category.shortDescription}
-                </p>
-              </Link>
-            ))}
-          </CarouselSection>
-        </PageContainer>
-      </section>
-      {popular.length >= 7 && (
-        <section className="bg-stone-50 py-14">
+      <div className="bg-pattern min-h-full">
+        <section className="py-14">
           <PageContainer>
             <CarouselSection
               header={
                 <div>
                   <h2 className="section-title text-xl sm:text-3xl font-bold">
-                    {d.home.popularTitle}
+                    {d.home.categoriesTitle}
                   </h2>
                   <p className="mt-2 text-stone-600">
-                    {d.home.popularDescription}
+                    {d.home.categoriesDescription}
                   </p>
                 </div>
               }
-            >
-              {popular.map((product) => (
-                <div
-                  key={product.id}
-                  className="w-[260px] sm:w-[calc((100%-1rem)/2)] md:w-[calc((100%-2rem)/3)] lg:w-[calc((100%-3rem)/4)] shrink-0 snap-start"
+              action={
+                <Link
+                  className="font-bold underline"
+                  href={localizedPath(locale, "catalog")}
                 >
-                  <ProductCard
-                    product={product}
-                    locale={locale}
-                    dictionary={d}
-                    settings={settings}
-                    leadSource="home_product_card"
+                  {d.actions.openCatalog}
+                </Link>
+              }
+            >
+              {categories.map((category) => (
+                <Link
+                  className="group flex w-[260px] sm:w-[calc((100%-1rem)/2)] md:w-[calc((100%-2rem)/3)] lg:w-[calc((100%-3rem)/4)] shrink-0 snap-start flex-col rounded-xl border border-stone-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  key={category.id}
+                  href={localizedPath(locale, `category/${category.slug}`)}
+                >
+                  <ProductIllustration
+                    category={category.presentationKey}
+                    tone={getCategoryTone(category.presentationKey)}
+                    label={category.name}
+                    className="h-36"
                   />
-                </div>
+                  <h3 className="mt-4 text-xl font-bold">{category.name}</h3>
+                  <p className="mt-1 text-sm text-stone-600 line-clamp-2">
+                    {category.shortDescription}
+                  </p>
+                </Link>
               ))}
             </CarouselSection>
           </PageContainer>
         </section>
-      )}
-      <section className="py-14">
-        <PageContainer>
-          <h2 className="section-title text-xl sm:text-3xl font-bold">
-            {d.home.benefitsTitle}
-          </h2>
-          <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {Object.values(d.home.benefits).map((benefit) => (
-              <article
-                className="rounded-2xl border border-stone-200 p-5"
-                key={benefit.title}
+        {popular.length >= 7 && (
+          <section className="py-14">
+            <PageContainer>
+              <CarouselSection
+                header={
+                  <div>
+                    <h2 className="section-title text-xl sm:text-3xl font-bold">
+                      {d.home.popularTitle}
+                    </h2>
+                    <p className="mt-2 text-stone-600">
+                      {d.home.popularDescription}
+                    </p>
+                  </div>
+                }
               >
-                <h3 className="font-bold">{benefit.title}</h3>
-                <p className="mt-2 text-sm text-stone-600">{benefit.text}</p>
-              </article>
-            ))}
-          </div>
-        </PageContainer>
-      </section>
+                {popular.map((product) => (
+                  <div
+                    key={product.id}
+                    className="w-[260px] sm:w-[calc((100%-1rem)/2)] md:w-[calc((100%-2rem)/3)] lg:w-[calc((100%-3rem)/4)] shrink-0 snap-start"
+                  >
+                    <ProductCard
+                      product={product}
+                      locale={locale}
+                      dictionary={d}
+                      settings={settings}
+                      leadSource="home_product_card"
+                    />
+                  </div>
+                ))}
+              </CarouselSection>
+            </PageContainer>
+          </section>
+        )}
+        <section className="py-14">
+          <PageContainer>
+            <h2 className="section-title text-xl sm:text-3xl font-bold">
+              {d.home.benefitsTitle}
+            </h2>
+            <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {Object.values(d.home.benefits).map((benefit) => (
+                <article
+                  className="rounded-2xl border border-stone-200 p-5"
+                  key={benefit.title}
+                >
+                  <h3 className="font-bold">{benefit.title}</h3>
+                  <p className="mt-2 text-sm text-stone-600">{benefit.text}</p>
+                </article>
+              ))}
+            </div>
+          </PageContainer>
+        </section>
+      </div>
       {/* Контакты магазина — закомментировано по дизайну
       <section className="pb-14">
         <PageContainer>

@@ -127,8 +127,7 @@ test.describe("ADM-ATTR: attributes", () => {
     await expect
       .poll(
         async () =>
-          (await adminRead.getAttributeByCode(data.code))?.options.length ??
-          -1,
+          (await adminRead.getAttributeByCode(data.code))?.options.length ?? -1,
         { timeout: 20_000 },
       )
       .toBe(0);
