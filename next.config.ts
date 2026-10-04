@@ -8,7 +8,7 @@ const scriptSource =
 const securityHeaders = [
   {
     key: "Content-Security-Policy",
-    value: `default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; frame-src https://www.openstreetmap.org; object-src 'none'; img-src 'self' data: blob: https:; script-src ${scriptSource}; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co`,
+    value: `default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; frame-src https://www.openstreetmap.org; object-src 'none'; img-src 'self' data: blob: https:; script-src ${scriptSource}; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co https://*.tehnosklad.md`,
   },
   {
     key: "Strict-Transport-Security",

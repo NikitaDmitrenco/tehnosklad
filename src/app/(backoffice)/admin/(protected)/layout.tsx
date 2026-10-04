@@ -14,7 +14,7 @@ export default async function ProtectedAdminLayout({
 }) {
   const admin = await requireAdmin();
   return (
-    <div className="min-h-screen bg-stone-100 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
+    <div className="min-h-screen lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
       <a className="skip-link" href="#admin-main">
         К содержимому
       </a>
